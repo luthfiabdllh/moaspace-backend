@@ -7,6 +7,8 @@ import { AuthModule } from './auth/auth.module.js'
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js'
 import { AllExceptionsFilter } from './common/filters/http-exception.filter.js'
 import { DatabaseModule } from './database/database.module.js'
+import { DivisionsModule } from './divisions/divisions.module.js'
+import { UsersModule } from './users/users.module.js'
 
 @Module({
   imports: [
@@ -16,6 +18,8 @@ import { DatabaseModule } from './database/database.module.js'
     }),
     DatabaseModule,
     AuthModule,
+    DivisionsModule,
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [

@@ -174,6 +174,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/divisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Daftar seluruh divisi KKN */
+        get: operations["DivisionsController_findAll"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Daftar seluruh anggota tim KKN beserta divisi & role (Super Admin) */
+        get: operations["UsersController_findAll"];
+        put?: never;
+        /** Daftarkan anggota baru tim KKN dan kirim tautan aktivasi (Super Admin) */
+        post: operations["UsersController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Ubah status aktif/nonaktif anggota (Super Admin) */
+        patch: operations["UsersController_updateStatus"];
+        trace?: never;
+    };
+    "/users/{id}/resend-activation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Kirim ulang link aktivasi untuk anggota yang belum aktif (Super Admin) */
+        post: operations["UsersController_resendActivation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -218,6 +287,34 @@ export interface components {
              * @example NewPassword123
              */
             password: string;
+        };
+        CreateUserDto: {
+            /**
+             * @description Alamat email anggota
+             * @example ahmad@moaspace.com
+             */
+            email: string;
+            /**
+             * @description Nama lengkap anggota
+             * @example Ahmad Fauzi
+             */
+            name: string;
+            /** @description ID divisi penempatan */
+            divisionId: string;
+            /**
+             * @description Role anggota di divisi
+             * @example MEMBER
+             * @enum {string}
+             */
+            role: "MEMBER" | "COORDINATOR";
+        };
+        UpdateUserStatusDto: {
+            /**
+             * @description Status pengguna
+             * @example ACTIVE
+             * @enum {string}
+             */
+            status: "ACTIVE" | "INACTIVE";
         };
     };
     responses: never;
@@ -456,6 +553,115 @@ export interface operations {
             };
             /** @description Token reset tidak valid atau kedaluwarsa */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DivisionsController_findAll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Daftar divisi berhasil diambil */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    UsersController_findAll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Daftar anggota berhasil diambil */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    UsersController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateUserDto"];
+            };
+        };
+        responses: {
+            /** @description Anggota berhasil didaftarkan dan tautan aktivasi terbit */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Email sudah terdaftar */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    UsersController_updateStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateUserStatusDto"];
+            };
+        };
+        responses: {
+            /** @description Status pengguna berhasil diperbarui */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    UsersController_resendActivation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tautan aktivasi baru berhasil diterbitkan */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
