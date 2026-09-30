@@ -1,3 +1,6 @@
 export * from './users.schema'
 export * from './divisions.schema'
 export * from './activity-logs.schema'
+export * from './epics.schema'
+export * from './stories.schema'
+export * from './tasks.schema'

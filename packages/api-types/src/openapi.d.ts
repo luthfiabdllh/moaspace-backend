@@ -268,14 +268,68 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Daftar seluruh divisi KKN */
+        /** Daftar seluruh divisi KKN beserta jumlah anggota & koordinator */
         get: operations["DivisionsController_findAll"];
+        put?: never;
+        /** Buat divisi baru (Khusus Super Admin & Koordinator Mahasiswa Unit) */
+        post: operations["DivisionsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/divisions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Detail satu divisi beserta daftar anggotanya */
+        get: operations["DivisionsController_findOne"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
+        /** Perbarui nama, slug, atau toggle approval request divisi (Super Admin & Kormanit) */
+        patch: operations["DivisionsController_update"];
+        trace?: never;
+    };
+    "/divisions/{id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Tambah anggota ke dalam divisi (Koordinator Divisi, Super Admin, Kormanit) */
+        post: operations["DivisionsController_addMember"];
+        delete?: never;
+        options?: never;
+        head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/divisions/{id}/members/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Hapus anggota dari divisi (Koordinator Divisi, Super Admin, Kormanit) */
+        delete: operations["DivisionsController_removeMember"];
+        options?: never;
+        head?: never;
+        /** Ubah peran anggota dalam divisi (Koordinator Divisi, Super Admin, Kormanit) */
+        patch: operations["DivisionsController_updateMemberRole"];
         trace?: never;
     };
     "/users": {
@@ -481,6 +535,54 @@ export interface components {
              * @example NewPassword123
              */
             password: string;
+        };
+        CreateDivisionDto: {
+            /**
+             * @description Nama divisi
+             * @example Media Kreatif
+             */
+            name: string;
+            /**
+             * @description Slug unik divisi URL-friendly
+             * @example media-kreatif
+             */
+            slug?: string;
+            /**
+             * @description Status aktifasi persetujuan request pekerjaan untuk divisi ini
+             * @default false
+             */
+            requestApprovalEnabled: boolean;
+        };
+        UpdateDivisionDto: {
+            /**
+             * @description Nama divisi
+             * @example Media & Publikasi Kreatif
+             */
+            name?: string;
+            /**
+             * @description Slug unik divisi URL-friendly
+             * @example media-publikasi-kreatif
+             */
+            slug?: string;
+            /** @description Status aktifasi persetujuan request pekerjaan untuk divisi ini */
+            requestApprovalEnabled?: boolean;
+        };
+        AddDivisionMemberDto: {
+            /** @description ID pengguna yang akan ditambahkan ke divisi */
+            userId: string;
+            /**
+             * @description Peran dalam divisi (MEMBER atau COORDINATOR)
+             * @default MEMBER
+             * @enum {string}
+             */
+            role: "MEMBER" | "COORDINATOR";
+        };
+        UpdateDivisionMemberRoleDto: {
+            /**
+             * @description Peran baru dalam divisi (MEMBER atau COORDINATOR)
+             * @enum {string}
+             */
+            role: "MEMBER" | "COORDINATOR";
         };
         CreateUserDto: {
             /**
@@ -962,6 +1064,191 @@ export interface operations {
         responses: {
             /** @description Daftar divisi berhasil diambil */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DivisionsController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDivisionDto"];
+            };
+        };
+        responses: {
+            /** @description Divisi baru berhasil dibuat */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Slug divisi sudah digunakan */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DivisionsController_findOne: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Detail divisi berhasil diambil */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Divisi tidak ditemukan */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DivisionsController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDivisionDto"];
+            };
+        };
+        responses: {
+            /** @description Divisi berhasil diperbarui */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Divisi tidak ditemukan */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DivisionsController_addMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddDivisionMemberDto"];
+            };
+        };
+        responses: {
+            /** @description Anggota berhasil ditambahkan ke divisi */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Divisi atau Pengguna tidak ditemukan */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Pengguna sudah terdaftar di divisi */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DivisionsController_removeMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Anggota berhasil dihapus dari divisi */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Anggota tidak terdaftar di divisi */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DivisionsController_updateMemberRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDivisionMemberRoleDto"];
+            };
+        };
+        responses: {
+            /** @description Peran anggota berhasil diperbarui */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Anggota tidak terdaftar di divisi */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
