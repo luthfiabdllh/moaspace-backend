@@ -15,6 +15,7 @@ import { EpicsModule } from './epics/epics.module.js'
 import { StoriesModule } from './stories/stories.module.js'
 import { TasksModule } from './tasks/tasks.module.js'
 import { CapacityModule } from './capacity/capacity.module.js'
+import { RequestsModule } from './requests/requests.module.js'
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { CapacityModule } from './capacity/capacity.module.js'
     StoriesModule,
     TasksModule,
     CapacityModule,
+    RequestsModule,
   ],
   controllers: [AppController],
   providers: [
