@@ -1,11 +1,13 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TasksService } from './tasks.service.js'
+import { TaskTransitionService } from './task-transition.service.js'
 
 describe('TasksService', () => {
   let service: TasksService
   let mockDb: any
   let mockActivityLogsService: any
+  let taskTransitionService: TaskTransitionService
 
   beforeEach(() => {
     mockDb = {
@@ -20,7 +22,8 @@ describe('TasksService', () => {
       findByEntity: vi.fn().mockResolvedValue([]),
     }
 
-    service = new TasksService(mockDb, mockActivityLogsService)
+    taskTransitionService = new TaskTransitionService()
+    service = new TasksService(mockDb, mockActivityLogsService, taskTransitionService)
   })
 
   describe('create', () => {

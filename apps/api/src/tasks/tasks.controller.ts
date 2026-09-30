@@ -24,6 +24,8 @@ import { TasksService } from './tasks.service.js'
 import { CreateTaskDto } from './dto/create-task.dto.js'
 import { UpdateTaskDto } from './dto/update-task.dto.js'
 import { QueryTasksDto } from './dto/query-tasks.dto.js'
+import { MoveTaskDto } from './dto/move-task.dto.js'
+import { BlockTaskDto } from './dto/block-task.dto.js'
 
 @ApiTags('Tasks')
 @ApiBearerAuth()
@@ -79,5 +81,39 @@ export class TasksController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.tasksService.delete(id, user)
+  }
+
+  @Patch(':id/move')
+  @ApiOperation({ summary: 'Pindahkan status atau susunan kartu di Kanban board (Validasi aturan transisi alur kerja)' })
+  @ApiResponse({ status: 200, description: 'Kartu berhasil dipindahkan' })
+  @ApiResponse({ status: 422, description: 'Pelanggaran aturan transisi status' })
+  async move(
+    @Param('id') id: string,
+    @Body() dto: MoveTaskDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.tasksService.move(id, dto, user)
+  }
+
+  @Post(':id/block')
+  @ApiOperation({ summary: 'Tandai task sebagai terkendala/blocked' })
+  @ApiResponse({ status: 200, description: 'Flag kendala berhasil dipasang' })
+  @ApiResponse({ status: 422, description: 'Task sudah DONE' })
+  async block(
+    @Param('id') id: string,
+    @Body() dto: BlockTaskDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.tasksService.block(id, dto, user)
+  }
+
+  @Post(':id/unblock')
+  @ApiOperation({ summary: 'Lepas tanda kendala/blocker dari task' })
+  @ApiResponse({ status: 200, description: 'Flag kendala berhasil dilepas' })
+  async unblock(
+    @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.tasksService.unblock(id, user)
   }
 }

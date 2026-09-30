@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common'
 import {
@@ -24,16 +25,21 @@ import {
   type RequestUser,
 } from '../common/decorators/current-user.decorator.js'
 import { DivisionsService } from './divisions.service.js'
+import { TasksService } from '../tasks/tasks.service.js'
 import { CreateDivisionDto } from './dto/create-division.dto.js'
 import { UpdateDivisionDto } from './dto/update-division.dto.js'
 import { AddDivisionMemberDto } from './dto/add-division-member.dto.js'
 import { UpdateDivisionMemberRoleDto } from './dto/update-division-member-role.dto.js'
+import { QueryBoardDto } from '../tasks/dto/query-board.dto.js'
 
 @ApiTags('Divisions')
 @ApiBearerAuth()
 @Controller('divisions')
 export class DivisionsController {
-  constructor(private readonly divisionsService: DivisionsService) {}
+  constructor(
+    private readonly divisionsService: DivisionsService,
+    private readonly tasksService: TasksService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Daftar seluruh divisi KKN beserta jumlah anggota & koordinator' })
@@ -48,6 +54,18 @@ export class DivisionsController {
   @ApiResponse({ status: 404, description: 'Divisi tidak ditemukan' })
   async findOne(@Param('id') id: string) {
     return this.divisionsService.findOne(id)
+  }
+
+  @Get(':id/board')
+  @ApiOperation({ summary: 'Papan Kanban divisi terkelompok per kolom status beserta filter' })
+  @ApiResponse({ status: 200, description: 'Papan Kanban divisi berhasil diambil' })
+  @ApiResponse({ status: 404, description: 'Divisi tidak ditemukan' })
+  async getBoard(
+    @Param('id') id: string,
+    @Query() query: QueryBoardDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.tasksService.getDivisionBoard(id, query, user)
   }
 
   @Post()

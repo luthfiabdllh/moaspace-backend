@@ -297,6 +297,23 @@ export interface paths {
         patch: operations["DivisionsController_update"];
         trace?: never;
     };
+    "/divisions/{id}/board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Papan Kanban divisi terkelompok per kolom status beserta filter */
+        get: operations["DivisionsController_getBoard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/divisions/{id}/members": {
         parameters: {
             query?: never;
@@ -330,6 +347,111 @@ export interface paths {
         head?: never;
         /** Ubah peran anggota dalam divisi (Koordinator Divisi, Super Admin, Kormanit) */
         patch: operations["DivisionsController_updateMemberRole"];
+        trace?: never;
+    };
+    "/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Daftar seluruh task dengan filter story, divisi, status, atau assignee */
+        get: operations["TasksController_findAll"];
+        put?: never;
+        /** Buat task baru di dalam story */
+        post: operations["TasksController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Detail satu task beserta riwayat log audit perubahan */
+        get: operations["TasksController_findOne"];
+        put?: never;
+        post?: never;
+        /** Hapus task dari story (Khusus Koordinator Divisi / Admin) */
+        delete: operations["TasksController_delete"];
+        options?: never;
+        head?: never;
+        /** Perbarui task, pindahkan status kanban, atau ubah assignee */
+        patch: operations["TasksController_update"];
+        trace?: never;
+    };
+    "/tasks/{id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Pindahkan status atau susunan kartu di Kanban board (Validasi aturan transisi alur kerja) */
+        patch: operations["TasksController_move"];
+        trace?: never;
+    };
+    "/tasks/{id}/block": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Tandai task sebagai terkendala/blocked */
+        post: operations["TasksController_block"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{id}/unblock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Lepas tanda kendala/blocker dari task */
+        post: operations["TasksController_unblock"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tugas Saya lintas semua divisi yang diikuti oleh user aktif */
+        get: operations["MeTasksController_getMyTasks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/users": {
@@ -543,43 +665,6 @@ export interface paths {
         patch: operations["StoriesController_update"];
         trace?: never;
     };
-    "/tasks": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Daftar seluruh task dengan filter story, divisi, status, atau assignee */
-        get: operations["TasksController_findAll"];
-        put?: never;
-        /** Buat task baru di dalam story */
-        post: operations["TasksController_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/tasks/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Detail satu task beserta riwayat log audit perubahan */
-        get: operations["TasksController_findOne"];
-        put?: never;
-        post?: never;
-        /** Hapus task dari story (Khusus Koordinator Divisi / Admin) */
-        delete: operations["TasksController_delete"];
-        options?: never;
-        head?: never;
-        /** Perbarui task, pindahkan status kanban, atau ubah assignee */
-        patch: operations["TasksController_update"];
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -694,6 +779,86 @@ export interface components {
              * @enum {string}
              */
             role: "MEMBER" | "COORDINATOR";
+        };
+        CreateTaskDto: {
+            /** @description ID Story induk tempat task ini bernaung */
+            storyId: string;
+            /**
+             * @description Judul unit kerja task
+             * @example Buat ilustrasi maskot Moa
+             */
+            title: string;
+            /** @description Deskripsi detail pekerjaan task */
+            description?: string;
+            /** @description ID anggota tim yang ditugaskan */
+            assigneeId?: string;
+            /**
+             * @description Status awal task
+             * @default BACKLOG
+             * @enum {string}
+             */
+            status: "BACKLOG" | "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE";
+            /**
+             * @description Prioritas task
+             * @default MEDIUM
+             * @enum {string}
+             */
+            priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+            /** @description Tenggat waktu pengerjaan (ISO8601) */
+            dueDate?: string;
+            /** @description Posisi urutan task dalam kolom (fractional index) */
+            position?: string;
+            /** @description Status kendala/blocker */
+            isBlocked?: boolean;
+            /** @description Alasan blocker/hambatan jika ada */
+            blockedReason?: string;
+        };
+        UpdateTaskDto: {
+            /** @description Judul task */
+            title?: string;
+            /** @description Deskripsi task */
+            description?: string;
+            /** @description ID anggota tim yang ditugaskan */
+            assigneeId?: Record<string, never>;
+            /**
+             * @description Status task
+             * @enum {string}
+             */
+            status?: "BACKLOG" | "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE";
+            /**
+             * @description Prioritas task
+             * @enum {string}
+             */
+            priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+            /** @description Tenggat waktu pengerjaan (ISO8601) */
+            dueDate?: Record<string, never>;
+            /** @description Posisi urutan task dalam kolom */
+            position?: string;
+            /** @description Status kendala/blocker */
+            isBlocked?: boolean;
+            /** @description Alasan blocker/hambatan jika ada */
+            blockedReason?: Record<string, never>;
+            /** @description Jumlah revisi */
+            revisionCount?: number;
+        };
+        MoveTaskDto: {
+            /**
+             * @description Status target di papan Kanban
+             * @enum {string}
+             */
+            status: "BACKLOG" | "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE";
+            /**
+             * @description Posisi baru kartu dalam kolom (fractional index)
+             * @example a0
+             */
+            position: string;
+        };
+        BlockTaskDto: {
+            /**
+             * @description Alasan kendala / blocker yang dialami
+             * @example Menunggu asset desain dari divisi Media Kreatif
+             */
+            reason: string;
         };
         CreateUserDto: {
             /**
@@ -843,67 +1008,6 @@ export interface components {
             prokerTag?: string;
             /** @description Tutup atau buka kembali story */
             isClosed?: boolean;
-        };
-        CreateTaskDto: {
-            /** @description ID Story induk tempat task ini bernaung */
-            storyId: string;
-            /**
-             * @description Judul unit kerja task
-             * @example Buat ilustrasi maskot Moa
-             */
-            title: string;
-            /** @description Deskripsi detail pekerjaan task */
-            description?: string;
-            /** @description ID anggota tim yang ditugaskan */
-            assigneeId?: string;
-            /**
-             * @description Status awal task
-             * @default BACKLOG
-             * @enum {string}
-             */
-            status: "BACKLOG" | "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE";
-            /**
-             * @description Prioritas task
-             * @default MEDIUM
-             * @enum {string}
-             */
-            priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
-            /** @description Tenggat waktu pengerjaan (ISO8601) */
-            dueDate?: string;
-            /** @description Posisi urutan task dalam kolom (fractional index) */
-            position?: string;
-            /** @description Status kendala/blocker */
-            isBlocked?: boolean;
-            /** @description Alasan blocker/hambatan jika ada */
-            blockedReason?: string;
-        };
-        UpdateTaskDto: {
-            /** @description Judul task */
-            title?: string;
-            /** @description Deskripsi task */
-            description?: string;
-            /** @description ID anggota tim yang ditugaskan */
-            assigneeId?: Record<string, never>;
-            /**
-             * @description Status task
-             * @enum {string}
-             */
-            status?: "BACKLOG" | "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE";
-            /**
-             * @description Prioritas task
-             * @enum {string}
-             */
-            priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
-            /** @description Tenggat waktu pengerjaan (ISO8601) */
-            dueDate?: Record<string, never>;
-            /** @description Posisi urutan task dalam kolom */
-            position?: string;
-            /** @description Status kendala/blocker */
-            isBlocked?: boolean;
-            /** @description Alasan blocker/hambatan jika ada */
-            blockedReason?: Record<string, never>;
-            /** @description Jumlah revisi */
-            revisionCount?: number;
         };
     };
     responses: never;
@@ -1415,6 +1519,46 @@ export interface operations {
             };
         };
     };
+    DivisionsController_getBoard: {
+        parameters: {
+            query?: {
+                /** @description Filter berdasarkan ID assignee */
+                assigneeId?: string;
+                /** @description Filter berdasarkan ID epic */
+                epicId?: string;
+                /** @description Filter berdasarkan tag program kerja */
+                prokerTag?: string;
+                /** @description Filter berdasarkan prioritas */
+                priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+                /** @description Filter task yang terkena kendala/blocker */
+                isBlocked?: boolean;
+                /** @description Kata kunci pencarian judul task */
+                search?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Papan Kanban divisi berhasil diambil */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Divisi tidak ditemukan */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     DivisionsController_addMember: {
         parameters: {
             query?: never;
@@ -1506,6 +1650,251 @@ export interface operations {
             };
             /** @description Anggota tidak terdaftar di divisi */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TasksController_findAll: {
+        parameters: {
+            query?: {
+                /** @description Filter berdasarkan ID Story */
+                storyId?: string;
+                /** @description Filter berdasarkan ID divisi pemilik story */
+                divisionId?: string;
+                /** @description Filter berdasarkan ID assignee/pelaksana */
+                assigneeId?: string;
+                /** @description Filter berdasarkan status task */
+                status?: "BACKLOG" | "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE";
+                /** @description Filter berdasarkan prioritas task */
+                priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+                /** @description Pencarian kata kunci judul atau deskripsi task */
+                search?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Daftar task berhasil diambil */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TasksController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTaskDto"];
+            };
+        };
+        responses: {
+            /** @description Task berhasil dibuat */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bukan anggota divisi terkait */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TasksController_findOne: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Detail task berhasil diambil */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Task tidak ditemukan */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TasksController_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Task berhasil dihapus */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bukan Koordinator divisi terkait */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TasksController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTaskDto"];
+            };
+        };
+        responses: {
+            /** @description Task berhasil diperbarui */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Task tidak ditemukan */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TasksController_move: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveTaskDto"];
+            };
+        };
+        responses: {
+            /** @description Kartu berhasil dipindahkan */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Pelanggaran aturan transisi status */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TasksController_block: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BlockTaskDto"];
+            };
+        };
+        responses: {
+            /** @description Flag kendala berhasil dipasang */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Task sudah DONE */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TasksController_unblock: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Flag kendala berhasil dilepas */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MeTasksController_getMyTasks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Daftar tugas user aktif terkelompok per kolom status */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1996,151 +2385,6 @@ export interface operations {
                 content?: never;
             };
             /** @description Story tidak ditemukan */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    TasksController_findAll: {
-        parameters: {
-            query?: {
-                /** @description Filter berdasarkan ID Story */
-                storyId?: string;
-                /** @description Filter berdasarkan ID divisi pemilik story */
-                divisionId?: string;
-                /** @description Filter berdasarkan ID assignee/pelaksana */
-                assigneeId?: string;
-                /** @description Filter berdasarkan status task */
-                status?: "BACKLOG" | "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE";
-                /** @description Filter berdasarkan prioritas task */
-                priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
-                /** @description Pencarian kata kunci judul atau deskripsi task */
-                search?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Daftar task berhasil diambil */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    TasksController_create: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateTaskDto"];
-            };
-        };
-        responses: {
-            /** @description Task berhasil dibuat */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Bukan anggota divisi terkait */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    TasksController_findOne: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Detail task berhasil diambil */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Task tidak ditemukan */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    TasksController_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Task berhasil dihapus */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Bukan Koordinator divisi terkait */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    TasksController_update: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateTaskDto"];
-            };
-        };
-        responses: {
-            /** @description Task berhasil diperbarui */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Task tidak ditemukan */
             404: {
                 headers: {
                     [name: string]: unknown;
