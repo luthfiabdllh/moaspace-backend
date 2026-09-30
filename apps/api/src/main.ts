@@ -45,6 +45,14 @@ async function bootstrap() {
     }),
   )
 
+  // OpenAPI JSON/YAML endpoint for type generator
+  app.getHttpAdapter().get('/openapi.yaml', (_req, res) => {
+    res.type('application/json').send(document)
+  })
+  app.getHttpAdapter().get('/openapi.json', (_req, res) => {
+    res.type('application/json').send(document)
+  })
+
   const port = configService.get<number>('PORT', 3000)
   await app.listen(port)
 

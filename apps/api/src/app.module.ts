@@ -1,7 +1,11 @@
 import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
+import { APP_FILTER, APP_GUARD } from '@nestjs/core'
 import { AppController } from './app.controller.js'
 import { AppService } from './app.service.js'
+import { AuthModule } from './auth/auth.module.js'
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js'
+import { AllExceptionsFilter } from './common/filters/http-exception.filter.js'
 import { DatabaseModule } from './database/database.module.js'
 
 @Module({
@@ -11,8 +15,19 @@ import { DatabaseModule } from './database/database.module.js'
       envFilePath: ['.env', '../../.env'],
     }),
     DatabaseModule,
+    AuthModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_FILTER,
+      useClass: AllExceptionsFilter,
+    },
+  ],
 })
 export class AppModule {}
