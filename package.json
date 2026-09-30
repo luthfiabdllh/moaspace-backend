@@ -1,0 +1,28 @@
+{
+  "name": "moaspace-backend",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "npm@10.9.2",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "lint:fix": "turbo run lint:fix",
+    "format": "turbo run format",
+    "format:check": "turbo run format:check",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "setup:env": "node ./scripts/setup-env.js",
+    "prepare": "npm run setup:env"
+  },
+  "devDependencies": {
+    "oxfmt": "^0.44.0",
+    "oxlint": "^1.59.0",
+    "turbo": "^2.8.20"
+  }
+}
