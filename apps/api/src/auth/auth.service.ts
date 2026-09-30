@@ -18,11 +18,14 @@ import {
 import bcrypt from 'bcrypt'
 import { and, eq, gt, isNull } from 'drizzle-orm'
 import { OAuth2Client } from 'google-auth-library'
+import { ActivityLogsService } from '../activity-logs/activity-logs.service.js'
 import {
   DATABASE_CONNECTION,
   type Database,
 } from '../database/database.provider.js'
+import type { ChangePasswordDto } from './dto/change-password.dto.js'
 import type { LoginDto } from './dto/login.dto.js'
+import type { UpdateProfileDto } from './dto/update-profile.dto.js'
 
 @Injectable()
 export class AuthService {
@@ -33,6 +36,7 @@ export class AuthService {
     @Inject(DATABASE_CONNECTION) private readonly db: Database,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly activityLogsService: ActivityLogsService,
   ) {
     const googleClientId = this.configService.get<string>('GOOGLE_CLIENT_ID')
     const googleClientSecret = this.configService.get<string>('GOOGLE_CLIENT_SECRET')
@@ -327,6 +331,8 @@ export class AuthService {
         isSuperAdmin: usersTable.isSuperAdmin,
         isKormanit: usersTable.isKormanit,
         status: usersTable.status,
+        passwordHash: usersTable.passwordHash,
+        googleId: usersTable.googleId,
         createdAt: usersTable.createdAt,
       })
       .from(usersTable)
@@ -349,13 +355,110 @@ export class AuthService {
       .where(eq(divisionMembersTable.userId, userId))
 
     return {
-      ...user,
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      isSuperAdmin: user.isSuperAdmin,
+      isKormanit: user.isKormanit,
+      status: user.status,
+      hasPassword: user.passwordHash !== null,
+      googleLinked: user.googleId !== null,
+      createdAt: user.createdAt,
       role: user.isSuperAdmin
         ? 'admin'
         : user.isKormanit
           ? 'kormanit'
           : memberships[0]?.role?.toLowerCase() || 'user',
       divisions: memberships,
+    }
+  }
+
+  // ─── Update Profile Name (/auth/profile) ──────────────────────────────────
+  async updateProfile(userId: string, dto: UpdateProfileDto) {
+    const newName = dto.name.trim()
+    const [user] = await this.db
+      .select({
+        id: usersTable.id,
+        name: usersTable.name,
+        email: usersTable.email,
+      })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
+
+    if (!user) {
+      throw new UnauthorizedException('Pengguna tidak ditemukan')
+    }
+
+    await this.db
+      .update(usersTable)
+      .set({ name: newName })
+      .where(eq(usersTable.id, userId))
+
+    await this.activityLogsService.record({
+      entityType: 'USER',
+      entityId: userId,
+      action: 'PROFILE_UPDATED',
+      actorId: userId,
+      before: { name: user.name },
+      after: { name: newName },
+    })
+
+    return {
+      success: true,
+      message: 'Profil berhasil diperbarui.',
+      user: {
+        id: user.id,
+        name: newName,
+        email: user.email,
+      },
+    }
+  }
+
+  // ─── Change Password (/auth/change-password) ───────────────────────────────
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    const [user] = await this.db
+      .select({
+        id: usersTable.id,
+        email: usersTable.email,
+        passwordHash: usersTable.passwordHash,
+      })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
+
+    if (!user) {
+      throw new UnauthorizedException('Pengguna tidak ditemukan')
+    }
+
+    if (user.passwordHash) {
+      if (!dto.currentPassword) {
+        throw new BadRequestException('Kata sandi saat ini wajib diisi.')
+      }
+      const isCurrentMatch = await bcrypt.compare(
+        dto.currentPassword,
+        user.passwordHash,
+      )
+      if (!isCurrentMatch) {
+        throw new BadRequestException('Kata sandi saat ini tidak sesuai.')
+      }
+    }
+
+    const newHash = await bcrypt.hash(dto.newPassword, 10)
+    await this.db
+      .update(usersTable)
+      .set({ passwordHash: newHash })
+      .where(eq(usersTable.id, userId))
+
+    await this.activityLogsService.record({
+      entityType: 'USER',
+      entityId: userId,
+      action: 'PASSWORD_CHANGED',
+      actorId: userId,
+      after: { email: user.email },
+    })
+
+    return {
+      success: true,
+      message: 'Kata sandi berhasil diperbarui.',
     }
   }
 

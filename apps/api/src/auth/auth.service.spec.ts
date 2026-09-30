@@ -40,7 +40,16 @@ describe('AuthService', () => {
       }),
     }
 
-    authService = new AuthService(mockDb, mockJwtService, mockConfigService)
+    const mockActivityLogsService = {
+      record: vi.fn().mockResolvedValue({ id: 'log-1' }),
+    }
+
+    authService = new AuthService(
+      mockDb,
+      mockJwtService,
+      mockConfigService,
+      mockActivityLogsService as any,
+    )
   })
 
   describe('validateUser', () => {
@@ -204,6 +213,72 @@ describe('AuthService', () => {
       const res = await authService.forgotPassword('nonexistent@moaspace.com')
       expect(res.success).toBe(true)
       expect(res.message).toContain('Jika email Anda terdaftar')
+    })
+  })
+
+  describe('updateProfile', () => {
+    it('should successfully update user display name', async () => {
+      mockDb.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([mockUser]),
+        }),
+      })
+
+      mockDb.update.mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{}]),
+        }),
+      })
+
+      const res = await authService.updateProfile('user-123', {
+        name: 'New Name',
+      })
+
+      expect(res.success).toBe(true)
+      expect(res.user.name).toBe('New Name')
+    })
+  })
+
+  describe('changePassword', () => {
+    it('should successfully change password if current password is correct', async () => {
+      mockDb.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([mockUser]),
+        }),
+      })
+
+      mockDb.update.mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{}]),
+        }),
+      })
+
+      vi.spyOn(bcrypt, 'compare').mockImplementation(async () => true)
+
+      const res = await authService.changePassword('user-123', {
+        currentPassword: 'currentPassword123',
+        newPassword: 'newSecretPassword456',
+      })
+
+      expect(res.success).toBe(true)
+      expect(res.message).toBe('Kata sandi berhasil diperbarui.')
+    })
+
+    it('should throw BadRequestException if current password does not match', async () => {
+      mockDb.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([mockUser]),
+        }),
+      })
+
+      vi.spyOn(bcrypt, 'compare').mockImplementation(async () => false)
+
+      await expect(
+        authService.changePassword('user-123', {
+          currentPassword: 'wrongPassword',
+          newPassword: 'newSecretPassword456',
+        }),
+      ).rejects.toThrow(BadRequestException)
     })
   })
 })

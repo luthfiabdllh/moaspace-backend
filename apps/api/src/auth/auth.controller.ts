@@ -5,6 +5,7 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  Patch,
   Post,
   Query,
   Res,
@@ -25,11 +26,13 @@ import {
 import { Public } from '../common/decorators/public.decorator.js'
 import { AuthService } from './auth.service.js'
 import { ActivateDto } from './dto/activate.dto.js'
+import { ChangePasswordDto } from './dto/change-password.dto.js'
 import { ForgotPasswordDto } from './dto/forgot-password.dto.js'
 import { GoogleAuthDto } from './dto/google-auth.dto.js'
 import { GoogleCallbackDto } from './dto/google-callback.dto.js'
 import { LoginDto } from './dto/login.dto.js'
 import { ResetPasswordDto } from './dto/reset-password.dto.js'
+import { UpdateProfileDto } from './dto/update-profile.dto.js'
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -174,6 +177,28 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Data profil user dan divisi' })
   async getMe(@CurrentUser() user: RequestUser) {
     return this.authService.getMe(user.userId)
+  }
+
+  @Patch('profile')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Perbarui nama profil pengguna yang sedang login' })
+  @ApiResponse({ status: 200, description: 'Profil berhasil diperbarui' })
+  async updateProfile(
+    @CurrentUser() user: RequestUser,
+    @Body() dto: UpdateProfileDto,
+  ) {
+    return this.authService.updateProfile(user.userId, dto)
+  }
+
+  @Patch('change-password')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Ubah kata sandi pengguna yang sedang login' })
+  @ApiResponse({ status: 200, description: 'Kata sandi berhasil diperbarui' })
+  async changePassword(
+    @CurrentUser() user: RequestUser,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.authService.changePassword(user.userId, dto)
   }
 
   @Public()

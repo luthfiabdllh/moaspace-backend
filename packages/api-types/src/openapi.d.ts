@@ -159,6 +159,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Perbarui nama profil pengguna yang sedang login */
+        patch: operations["AuthController_updateProfile"];
+        trace?: never;
+    };
+    "/auth/change-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Ubah kata sandi pengguna yang sedang login */
+        patch: operations["AuthController_changePassword"];
+        trace?: never;
+    };
     "/auth/activate": {
         parameters: {
             query?: never;
@@ -204,6 +238,23 @@ export interface paths {
         put?: never;
         /** Reset kata sandi dengan token valid */
         post: operations["AuthController_resetPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/activity-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ambil daftar activity log dengan pencarian, filter, sorting & paginasi (Super Admin & Koordinator Mahasiswa Unit) */
+        get: operations["ActivityLogsController_getLogs"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -364,23 +415,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/activity-logs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Ambil daftar activity log dengan pencarian, filter, sorting & paginasi (Super Admin & Koordinator Mahasiswa Unit) */
-        get: operations["ActivityLogsController_getLogs"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -406,6 +440,22 @@ export interface components {
         GoogleAuthDto: {
             /** @description Google ID token from Google OAuth popup / library */
             idToken: string;
+        };
+        UpdateProfileDto: {
+            /**
+             * @description Nama lengkap baru pengguna
+             * @example Ahmad Fauzi
+             */
+            name: string;
+        };
+        ChangePasswordDto: {
+            /** @description Kata sandi saat ini (wajib jika akun sebelumnya sudah memiliki kata sandi) */
+            currentPassword?: string;
+            /**
+             * @description Kata sandi baru (minimal 8 karakter)
+             * @example rahasia123
+             */
+            newPassword: string;
         };
         ActivateDto: {
             /** @description One-time activation token received via email */
@@ -742,6 +792,50 @@ export interface operations {
             };
         };
     };
+    AuthController_updateProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProfileDto"];
+            };
+        };
+        responses: {
+            /** @description Profil berhasil diperbarui */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AuthController_changePassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangePasswordDto"];
+            };
+        };
+        responses: {
+            /** @description Kata sandi berhasil diperbarui */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     AuthController_activate: {
         parameters: {
             query?: never;
@@ -815,6 +909,41 @@ export interface operations {
             };
             /** @description Token reset tidak valid atau kedaluwarsa */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ActivityLogsController_getLogs: {
+        parameters: {
+            query?: {
+                /** @description Kata kunci pencarian nama aktor, email, aksi, atau detail */
+                search?: string;
+                /** @description Filter jenis aksi aktivitas */
+                action?: string;
+                /** @description Filter tipe entitas (USER, DIVISION_MEMBER, EPIC, dll) */
+                entityType?: string;
+                /** @description Filter ID entitas tertentu */
+                entityId?: string;
+                /** @description Kolom pengurutan data */
+                sortBy?: "createdAt" | "action" | "actorName";
+                /** @description Arah pengurutan data */
+                sortOrder?: "asc" | "desc";
+                /** @description Nomor halaman (1-indexed) */
+                page?: number;
+                /** @description Jumlah data per halaman (maksimal 100) */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Daftar activity log beserta metadata paginasi berhasil diambil */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1041,41 +1170,6 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Tautan aktivasi baru berhasil diterbitkan */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    ActivityLogsController_getLogs: {
-        parameters: {
-            query?: {
-                /** @description Kata kunci pencarian nama aktor, email, aksi, atau detail */
-                search?: string;
-                /** @description Filter jenis aksi aktivitas */
-                action?: string;
-                /** @description Filter tipe entitas (USER, DIVISION_MEMBER, EPIC, dll) */
-                entityType?: string;
-                /** @description Filter ID entitas tertentu */
-                entityId?: string;
-                /** @description Kolom pengurutan data */
-                sortBy?: "createdAt" | "action" | "actorName";
-                /** @description Arah pengurutan data */
-                sortOrder?: "asc" | "desc";
-                /** @description Nomor halaman (1-indexed) */
-                page?: number;
-                /** @description Jumlah data per halaman (maksimal 100) */
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Daftar activity log beserta metadata paginasi berhasil diambil */
             200: {
                 headers: {
                     [name: string]: unknown;
