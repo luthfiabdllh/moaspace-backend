@@ -11,8 +11,8 @@ export class SuperAdminGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = ctxUser(context)
 
-    if (!request?.isSuperAdmin) {
-      throw new ForbiddenException('Akses khusus Super Admin')
+    if (!request?.isSuperAdmin && !request?.isKormanit) {
+      throw new ForbiddenException('Akses khusus Super Admin atau Kormanit')
     }
 
     return true

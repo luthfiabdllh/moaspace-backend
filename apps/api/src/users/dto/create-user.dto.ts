@@ -17,7 +17,13 @@ export class CreateUserDto {
   @IsNotEmpty({ message: 'Divisi wajib dipilih' })
   divisionId!: string
 
-  @ApiProperty({ enum: ['MEMBER', 'COORDINATOR'], example: 'MEMBER', description: 'Role anggota di divisi' })
-  @IsEnum(['MEMBER', 'COORDINATOR'], { message: 'Role harus berupa MEMBER atau COORDINATOR' })
-  role!: 'MEMBER' | 'COORDINATOR'
+  @ApiProperty({
+    enum: ['MEMBER', 'COORDINATOR', 'KORMANIT'],
+    example: 'MEMBER',
+    description: 'Role anggota di divisi atau Kormanit (Pimpinan Unit)',
+  })
+  @IsEnum(['MEMBER', 'COORDINATOR', 'KORMANIT'], {
+    message: 'Role harus berupa MEMBER, COORDINATOR, atau KORMANIT',
+  })
+  role!: 'MEMBER' | 'COORDINATOR' | 'KORMANIT'
 }

@@ -4,6 +4,7 @@ export interface RequestUser {
   userId: string
   email: string
   isSuperAdmin: boolean
+  isKormanit?: boolean
   sessionId?: string
 }
 

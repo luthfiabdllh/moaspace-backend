@@ -109,7 +109,7 @@ describe('AuthService', () => {
     })
   })
 
-  describe('googleAuth', () => {
+  describe('googleAuth & OAuth 2.0 closed system', () => {
     it('should reject unregistered Google accounts per PRD Workflow 1', async () => {
       mockDb.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
@@ -119,7 +119,7 @@ describe('AuthService', () => {
 
       await expect(
         authService.googleAuth('mock-google-token:notregistered@moaspace.com'),
-      ).rejects.toThrow('Email Google ini belum didaftarkan oleh Super Admin')
+      ).rejects.toThrow('belum terdaftar. Sistem ini bersifat tertutup')
     })
 
     it('should successfully authenticate registered Google user and link googleId', async () => {
@@ -140,6 +140,40 @@ describe('AuthService', () => {
       })
 
       const res = await authService.googleAuth('mock-google-token:test@moaspace.com')
+      expect(res.accessToken).toBe('mock-jwt-token')
+      expect(res.user.email).toBe('test@moaspace.com')
+    })
+
+    it('handleGoogleCallback should reject unregistered Google account', async () => {
+      mockDb.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([]),
+        }),
+      })
+
+      await expect(
+        authService.handleGoogleCallback('mock-google-code:unregistered@moaspace.com'),
+      ).rejects.toThrow('belum terdaftar. Sistem ini bersifat tertutup')
+    })
+
+    it('handleGoogleCallback should authenticate registered Google account', async () => {
+      mockDb.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([mockUser]),
+        }),
+      })
+
+      mockDb.update.mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{}]),
+        }),
+      })
+
+      mockDb.insert.mockReturnValue({
+        values: vi.fn().mockResolvedValue([{}]),
+      })
+
+      const res = await authService.handleGoogleCallback('mock-google-code:test@moaspace.com')
       expect(res.accessToken).toBe('mock-jwt-token')
       expect(res.user.email).toBe('test@moaspace.com')
     })

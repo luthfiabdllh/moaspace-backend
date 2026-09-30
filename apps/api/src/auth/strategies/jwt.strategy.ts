@@ -9,6 +9,7 @@ export interface JwtPayload {
   email: string
   name: string
   isSuperAdmin: boolean
+  isKormanit?: boolean
   role?: string
   sessionId?: string
 }
@@ -37,12 +38,18 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Token payload tidak valid')
     }
 
+    const isSuperAdmin = payload.isSuperAdmin ?? false
+    const isKormanit = payload.isKormanit ?? false
+
     return {
       userId: payload.userId ?? payload.sub,
       email: payload.email,
       name: payload.name,
-      isSuperAdmin: payload.isSuperAdmin,
-      role: payload.role ?? (payload.isSuperAdmin ? 'admin' : 'user'),
+      isSuperAdmin,
+      isKormanit,
+      role:
+        payload.role ??
+        (isSuperAdmin ? 'admin' : isKormanit ? 'kormanit' : 'user'),
       sessionId: payload.sessionId,
     }
   }

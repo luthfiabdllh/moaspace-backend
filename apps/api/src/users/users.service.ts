@@ -51,6 +51,10 @@ export class UsersService {
       throw new NotFoundException('Divisi yang dipilih tidak ditemukan.')
     }
 
+    const isKormanit = dto.role === 'KORMANIT'
+    const divisionRole: 'MEMBER' | 'COORDINATOR' =
+      dto.role === 'COORDINATOR' ? 'COORDINATOR' : dto.role === 'MEMBER' ? 'MEMBER' : 'COORDINATOR'
+
     const userId = crypto.randomUUID()
     const rawToken = crypto.randomBytes(32).toString('hex')
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex')
@@ -64,6 +68,7 @@ export class UsersService {
         name: dto.name.trim(),
         passwordHash: null,
         isSuperAdmin: false,
+        isKormanit,
         status: 'ACTIVE',
       })
 
@@ -72,7 +77,7 @@ export class UsersService {
         id: crypto.randomUUID(),
         userId,
         divisionId: dto.divisionId,
-        role: dto.role,
+        role: divisionRole,
       })
 
       // 3. Terbitkan Token Aktivasi
@@ -90,12 +95,13 @@ export class UsersService {
 
     return {
       success: true,
-      message: `Anggota ${dto.name} berhasil didaftarkan ke divisi ${division.name}.`,
+      message: `Anggota ${dto.name} berhasil didaftarkan${isKormanit ? ' sebagai Kormanit' : ''} ke divisi ${division.name}.`,
       user: {
         id: userId,
         name: dto.name.trim(),
         email,
         isSuperAdmin: false,
+        isKormanit,
         status: 'ACTIVE',
         isActivated: false,
         divisionId: dto.divisionId,
@@ -107,7 +113,7 @@ export class UsersService {
     }
   }
 
-  // ─── 2. Super Admin: Ambil Semua Anggota ─────────────────────────────────
+  // ─── 2. Super Admin & Kormanit: Ambil Semua Anggota ───────────────────────
   async findAll() {
     const users = await this.db
       .select({
@@ -115,6 +121,7 @@ export class UsersService {
         name: usersTable.name,
         email: usersTable.email,
         isSuperAdmin: usersTable.isSuperAdmin,
+        isKormanit: usersTable.isKormanit,
         status: usersTable.status,
         passwordHash: usersTable.passwordHash,
         googleId: usersTable.googleId,
@@ -147,6 +154,7 @@ export class UsersService {
       name: u.name,
       email: u.email,
       isSuperAdmin: u.isSuperAdmin,
+      isKormanit: u.isKormanit,
       status: u.status,
       isActivated: u.passwordHash !== null || u.googleId !== null,
       createdAt: u.createdAt,
@@ -154,7 +162,7 @@ export class UsersService {
     }))
   }
 
-  // ─── 3. Super Admin: Ubah Status (Aktif / Nonaktif) ──────────────────────
+  // ─── 3. Super Admin & Kormanit: Ubah Status (Aktif / Nonaktif) ────────────
   async updateStatus(userId: string, status: 'ACTIVE' | 'INACTIVE') {
     const [user] = await this.db
       .select()
@@ -165,8 +173,8 @@ export class UsersService {
       throw new NotFoundException('Pengguna tidak ditemukan.')
     }
 
-    if (user.isSuperAdmin && status === 'INACTIVE') {
-      throw new BadRequestException('Akun Super Admin tidak dapat dinonaktifkan.')
+    if ((user.isSuperAdmin || user.isKormanit) && status === 'INACTIVE') {
+      throw new BadRequestException('Akun Super Admin atau Kormanit tidak dapat dinonaktifkan.')
     }
 
     await this.db

@@ -60,7 +60,38 @@ async function seed() {
       console.log('ℹ️ Super Admin user verified: admin@moaspace.com')
     }
 
-    // 2. Seed 7 Default Divisions
+    // 2. Seed Kormanit (Koordinator Mahasiswa Unit)
+    const kormanitEmail = 'kormanit@moaspace.com'
+    const existingKormanit = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.email, kormanitEmail))
+
+    let kormanitId: string
+
+    if (existingKormanit.length === 0) {
+      kormanitId = crypto.randomUUID()
+      const passwordHash = await bcrypt.hash('kormanit123', 10)
+      await db.insert(usersTable).values({
+        id: kormanitId,
+        name: 'Kormanit Unit KKN',
+        email: kormanitEmail,
+        passwordHash,
+        isSuperAdmin: false,
+        isKormanit: true,
+        status: 'ACTIVE',
+      })
+      console.log('✅ Kormanit user created: kormanit@moaspace.com / kormanit123')
+    } else {
+      kormanitId = existingKormanit[0]!.id
+      await db
+        .update(usersTable)
+        .set({ isKormanit: true, status: 'ACTIVE' })
+        .where(eq(usersTable.id, kormanitId))
+      console.log('ℹ️ Kormanit user verified: kormanit@moaspace.com')
+    }
+
+    // 3. Seed 7 Default Divisions
     for (const div of DEFAULT_DIVISIONS) {
       const existingDiv = await db
         .select()

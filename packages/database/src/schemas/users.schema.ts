@@ -10,6 +10,7 @@ export const usersTable = pgTable('users', {
   passwordHash: text('password_hash'),
   googleId: varchar('google_id', { length: 255 }),
   isSuperAdmin: boolean('is_super_admin').notNull().default(false),
+  isKormanit: boolean('is_kormanit').notNull().default(false),
   status: userStatusEnum('status').notNull().default('ACTIVE'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true })

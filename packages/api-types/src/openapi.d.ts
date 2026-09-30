@@ -62,10 +62,46 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Inisiasi login Google OAuth 2.0 (Redirect ke consent screen Google) */
+        get: operations["AuthController_googleRedirect"];
         put?: never;
-        /** Masuk dengan Google SSO (OAuth 2.0) */
+        /** Masuk dengan Google ID Token (One Tap / Popup SDK) */
         post: operations["AuthController_googleAuth"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/google/url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dapatkan URL otorisasi Google OAuth 2.0 */
+        get: operations["AuthController_getGoogleAuthUrl"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/google/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Callback redirect langsung dari Google OAuth 2.0 */
+        get: operations["AuthController_googleCallbackGet"];
+        put?: never;
+        /** Tukarkan kode otorisasi Google OAuth 2.0 dengan sesi (BFF) */
+        post: operations["AuthController_googleCallback"];
         delete?: never;
         options?: never;
         head?: never;
@@ -259,6 +295,12 @@ export interface components {
              */
             password: string;
         };
+        GoogleCallbackDto: {
+            /** @description Kode otorisasi dari Google OAuth 2.0 consent */
+            code: string;
+            /** @description Redirect URI yang dipakai saat request otorisasi awal */
+            redirectUri?: string;
+        };
         GoogleAuthDto: {
             /** @description Google ID token from Google OAuth popup / library */
             idToken: string;
@@ -302,11 +344,11 @@ export interface components {
             /** @description ID divisi penempatan */
             divisionId: string;
             /**
-             * @description Role anggota di divisi
+             * @description Role anggota di divisi atau Kormanit (Pimpinan Unit)
              * @example MEMBER
              * @enum {string}
              */
-            role: "MEMBER" | "COORDINATOR";
+            role: "MEMBER" | "COORDINATOR" | "KORMANIT";
         };
         UpdateUserStatusDto: {
             /**
@@ -390,6 +432,23 @@ export interface operations {
             };
         };
     };
+    AuthController_googleRedirect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     AuthController_googleAuth: {
         parameters: {
             query?: never;
@@ -411,6 +470,71 @@ export interface operations {
                 content?: never;
             };
             /** @description Email Google tidak terdaftar dalam sistem */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AuthController_getGoogleAuthUrl: {
+        parameters: {
+            query: {
+                redirectUri: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AuthController_googleCallbackGet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AuthController_googleCallback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleCallbackDto"];
+            };
+        };
+        responses: {
+            /** @description Login Google berhasil, token diterbitkan */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Email Google belum terdaftar (sistem tertutup) */
             401: {
                 headers: {
                     [name: string]: unknown;

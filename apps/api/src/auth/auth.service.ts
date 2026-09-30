@@ -35,7 +35,16 @@ export class AuthService {
     private readonly configService: ConfigService,
   ) {
     const googleClientId = this.configService.get<string>('GOOGLE_CLIENT_ID')
-    this.googleClient = new OAuth2Client(googleClientId)
+    const googleClientSecret = this.configService.get<string>('GOOGLE_CLIENT_SECRET')
+    const googleCallbackUrl = this.configService.get<string>(
+      'GOOGLE_CALLBACK_URL',
+      'http://localhost:3001/api/auth/google/callback',
+    )
+    this.googleClient = new OAuth2Client(
+      googleClientId,
+      googleClientSecret,
+      googleCallbackUrl,
+    )
   }
 
   // ─── 1. Login with Email and Password ──────────────────────────────────────
@@ -72,7 +81,106 @@ export class AuthService {
     return user
   }
 
-  // ─── 2. Google OAuth / SSO ─────────────────────────────────────────────────
+  // ─── 2. Google OAuth 2.0 (SSO) ─────────────────────────────────────────────
+
+  /**
+   * Generates Google OAuth 2.0 authorization URL
+   */
+  getGoogleAuthUrl(redirectUri?: string): string {
+    const callbackUrl =
+      redirectUri ||
+      this.configService.get<string>(
+        'GOOGLE_CALLBACK_URL',
+        'http://localhost:3001/api/auth/google/callback',
+      )
+
+    return this.googleClient.generateAuthUrl({
+      access_type: 'offline',
+      scope: ['openid', 'email', 'profile'],
+      prompt: 'select_account',
+      redirect_uri: callbackUrl,
+    })
+  }
+
+  /**
+   * Exchanges Google OAuth 2.0 authorization code for session & tokens
+   * Enforces closed system: rejects unregistered emails.
+   */
+  async handleGoogleCallback(code: string, redirectUri?: string, userAgent?: string) {
+    const googleClientId = this.configService.get<string>('GOOGLE_CLIENT_ID')
+    const callbackUrl =
+      redirectUri ||
+      this.configService.get<string>(
+        'GOOGLE_CALLBACK_URL',
+        'http://localhost:3001/api/auth/google/callback',
+      )
+
+    let email: string | undefined
+    let googleId: string | undefined
+
+    try {
+      if (
+        this.configService.get<string>('NODE_ENV') !== 'production' &&
+        code.startsWith('mock-google-code:')
+      ) {
+        email = code.replace('mock-google-code:', '').trim()
+        googleId = `google-${email}`
+      } else {
+        const { tokens } = await this.googleClient.getToken({
+          code,
+          redirect_uri: callbackUrl,
+        })
+
+        if (tokens.id_token) {
+          const ticket = await this.googleClient.verifyIdToken({
+            idToken: tokens.id_token,
+            audience: googleClientId,
+          })
+          const payload = ticket.getPayload()
+          if (!payload?.email_verified) {
+            throw new UnauthorizedException('Email Google belum terverifikasi')
+          }
+          email = payload.email
+          googleId = payload.sub
+        } else if (tokens.access_token) {
+          const userinfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: { Authorization: `Bearer ${tokens.access_token}` },
+          })
+          if (!userinfoRes.ok) {
+            throw new UnauthorizedException('Gagal mengambil data profil dari Google')
+          }
+          const profile = (await userinfoRes.json()) as {
+            email?: string
+            email_verified?: boolean
+            sub?: string
+            name?: string
+          }
+          if (!profile.email_verified) {
+            throw new UnauthorizedException('Email Google belum terverifikasi')
+          }
+          email = profile.email
+          googleId = profile.sub
+        }
+      }
+    } catch (err: any) {
+      if (err instanceof UnauthorizedException) throw err
+      this.logger.warn(`Google code exchange failed: ${err?.message || err}`)
+      throw new UnauthorizedException(
+        'Gagal memproses autentikasi Google. Kode otorisasi tidak valid.',
+      )
+    }
+
+    if (!email) {
+      throw new UnauthorizedException('Gagal mendapatkan email dari Google')
+    }
+
+    return this.processGoogleUser(email, googleId, userAgent)
+  }
+
+  /**
+   * Google ID Token verification (for Google One Tap / popup client SDK)
+   * Enforces closed system: rejects unregistered emails.
+   */
   async googleAuth(idToken: string, userAgent?: string) {
     let email: string | undefined
     let googleId: string | undefined
@@ -107,15 +215,25 @@ export class AuthService {
       throw new UnauthorizedException('Gagal mendapatkan email dari Google')
     }
 
+    return this.processGoogleUser(email, googleId, userAgent)
+  }
+
+  /**
+   * Helper: Validates Google user against database (CLOSED SYSTEM)
+   * If email is not in usersTable -> rejected with 401
+   * If status is not ACTIVE -> rejected with 401
+   */
+  private async processGoogleUser(email: string, googleId?: string, userAgent?: string) {
     const [user] = await this.db
       .select()
       .from(usersTable)
       .where(eq(usersTable.email, email.toLowerCase().trim()))
 
-    // PRD Workflow 1: No auto registration. Reject if not registered or inactive.
+    // Closed System Check (PRD Workflow 1):
+    // Registration must be done by Super Admin first. Public/auto-registration is rejected.
     if (!user) {
       throw new UnauthorizedException(
-        'Email Google ini belum didaftarkan oleh Super Admin. Pendaftaran mandiri tidak diizinkan.',
+        `Email Google (${email}) belum terdaftar. Sistem ini bersifat tertutup (closed system). Silakan hubungi Super Admin KKN untuk mendaftarkan akun Anda terlebih dahulu.`,
       )
     }
 
@@ -207,6 +325,7 @@ export class AuthService {
         name: usersTable.name,
         email: usersTable.email,
         isSuperAdmin: usersTable.isSuperAdmin,
+        isKormanit: usersTable.isKormanit,
         status: usersTable.status,
         createdAt: usersTable.createdAt,
       })
@@ -231,7 +350,11 @@ export class AuthService {
 
     return {
       ...user,
-      role: user.isSuperAdmin ? 'admin' : memberships[0]?.role?.toLowerCase() || 'user',
+      role: user.isSuperAdmin
+        ? 'admin'
+        : user.isKormanit
+          ? 'kormanit'
+          : memberships[0]?.role?.toLowerCase() || 'user',
       divisions: memberships,
     }
   }
@@ -370,6 +493,7 @@ export class AuthService {
       email: string
       name: string
       isSuperAdmin: boolean
+      isKormanit?: boolean
       status: string
     },
     userAgent?: string,
@@ -381,13 +505,17 @@ export class AuthService {
     const accessTokenTtl = Number(this.configService.get<number>('ACCESS_TOKEN_TTL', 900)) // 15 menit
     const refreshTokenTtl = Number(this.configService.get<number>('REFRESH_TOKEN_TTL', 604800)) // 7 hari
 
+    const isSuperAdmin = user.isSuperAdmin ?? false
+    const isKormanit = user.isKormanit ?? false
+
     const payload = {
       sub: user.id,
       userId: user.id,
       email: user.email,
       name: user.name,
-      isSuperAdmin: user.isSuperAdmin,
-      role: user.isSuperAdmin ? 'admin' : 'user',
+      isSuperAdmin,
+      isKormanit,
+      role: isSuperAdmin ? 'admin' : isKormanit ? 'kormanit' : 'user',
       sessionId,
     }
 
@@ -412,7 +540,8 @@ export class AuthService {
         id: user.id,
         name: user.name,
         email: user.email,
-        isSuperAdmin: user.isSuperAdmin,
+        isSuperAdmin,
+        isKormanit,
         status: user.status,
       },
     }

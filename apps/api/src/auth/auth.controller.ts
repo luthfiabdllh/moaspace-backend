@@ -6,15 +6,18 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Query,
+  Res,
   Req,
 } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import {
   ApiBearerAuth,
   ApiOperation,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger'
-import type { Request } from 'express'
+import type { Request, Response } from 'express'
 import {
   CurrentUser,
   type RequestUser,
@@ -24,13 +27,17 @@ import { AuthService } from './auth.service.js'
 import { ActivateDto } from './dto/activate.dto.js'
 import { ForgotPasswordDto } from './dto/forgot-password.dto.js'
 import { GoogleAuthDto } from './dto/google-auth.dto.js'
+import { GoogleCallbackDto } from './dto/google-callback.dto.js'
 import { LoginDto } from './dto/login.dto.js'
 import { ResetPasswordDto } from './dto/reset-password.dto.js'
 
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+  ) {}
 
   @Public()
   @Post('login')
@@ -44,9 +51,80 @@ export class AuthController {
   }
 
   @Public()
+  @Get('google')
+  @ApiOperation({ summary: 'Inisiasi login Google OAuth 2.0 (Redirect ke consent screen Google)' })
+  async googleRedirect(
+    @Query('redirectUri') redirectUri: string | undefined,
+    @Res() res: Response,
+  ) {
+    const url = this.authService.getGoogleAuthUrl(redirectUri)
+    return res.redirect(url)
+  }
+
+  @Public()
+  @Get('google/url')
+  @ApiOperation({ summary: 'Dapatkan URL otorisasi Google OAuth 2.0' })
+  async getGoogleAuthUrl(@Query('redirectUri') redirectUri?: string) {
+    return { url: this.authService.getGoogleAuthUrl(redirectUri) }
+  }
+
+  @Public()
+  @Post('google/callback')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Tukarkan kode otorisasi Google OAuth 2.0 dengan sesi (BFF)' })
+  @ApiResponse({ status: 200, description: 'Login Google berhasil, token diterbitkan' })
+  @ApiResponse({ status: 401, description: 'Email Google belum terdaftar (sistem tertutup)' })
+  async googleCallback(@Body() dto: GoogleCallbackDto, @Req() req: Request) {
+    const userAgent = req.headers['user-agent']
+    return this.authService.handleGoogleCallback(dto.code, dto.redirectUri, userAgent)
+  }
+
+  @Public()
+  @Get('google/callback')
+  @ApiOperation({ summary: 'Callback redirect langsung dari Google OAuth 2.0' })
+  async googleCallbackGet(
+    @Query('code') code: string | undefined,
+    @Query('error') error: string | undefined,
+    @Query('error_description') errorDescription: string | undefined,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const frontendUrl =
+      this.configService.get<string>('FRONTEND_URL', 'http://localhost:3001')
+
+    if (error) {
+      const msg = errorDescription || error || 'Login Google dibatalkan'
+      return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(msg)}`)
+    }
+
+    if (!code) {
+      return res.redirect(
+        `${frontendUrl}/login?error=${encodeURIComponent('Kode otorisasi Google tidak ditemukan')}`,
+      )
+    }
+
+    try {
+      const userAgent = req.headers['user-agent']
+      const callbackUrl = `${this.configService.get<string>('BASE_URL', 'http://localhost:3000')}/auth/google/callback`
+      const result = await this.authService.handleGoogleCallback(
+        code,
+        callbackUrl,
+        userAgent,
+      )
+
+      return res.redirect(
+        `${frontendUrl}/api/auth/google/callback?token=${result.accessToken}&refresh=${result.refreshToken}`,
+      )
+    } catch (err: any) {
+      const msg = err.message || 'Gagal memproses autentikasi Google'
+      return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(msg)}`)
+    }
+  }
+
+  @Public()
   @Post('google')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Masuk dengan Google SSO (OAuth 2.0)' })
+  @ApiOperation({ summary: 'Masuk dengan Google ID Token (One Tap / Popup SDK)' })
   @ApiResponse({ status: 200, description: 'Login Google berhasil' })
   @ApiResponse({ status: 401, description: 'Email Google tidak terdaftar dalam sistem' })
   async googleAuth(@Body() dto: GoogleAuthDto, @Req() req: Request) {
