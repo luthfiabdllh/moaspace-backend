@@ -10,6 +10,9 @@ import { DatabaseModule } from './database/database.module.js'
 import { ActivityLogsModule } from './activity-logs/activity-logs.module.js'
 import { DivisionsModule } from './divisions/divisions.module.js'
 import { UsersModule } from './users/users.module.js'
+import { EpicsModule } from './epics/epics.module.js'
+import { StoriesModule } from './stories/stories.module.js'
+import { TasksModule } from './tasks/tasks.module.js'
 
 @Module({
   imports: [
@@ -22,6 +25,9 @@ import { UsersModule } from './users/users.module.js'
     DivisionsModule,
     UsersModule,
     ActivityLogsModule,
+    EpicsModule,
+    StoriesModule,
+    TasksModule,
   ],
   controllers: [AppController],
   providers: [

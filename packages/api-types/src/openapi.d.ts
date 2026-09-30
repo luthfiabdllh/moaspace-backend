@@ -469,6 +469,117 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/epics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Daftar epic pekerjaan divisi / lintas divisi beserta progres dinamis */
+        get: operations["EpicsController_findAll"];
+        put?: never;
+        /** Buat epic baru (Koordinator Divisi untuk scope DIVISION; Super Admin/Kormanit untuk CROSS) */
+        post: operations["EpicsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/epics/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Detail satu epic beserta seluruh story & task */
+        get: operations["EpicsController_findOne"];
+        put?: never;
+        post?: never;
+        /** Hapus epic (Khusus Super Admin & Kormanit) */
+        delete: operations["EpicsController_delete"];
+        options?: never;
+        head?: never;
+        /** Perbarui judul, tanggal, proker, atau tutup/buka epic */
+        patch: operations["EpicsController_update"];
+        trace?: never;
+    };
+    "/stories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Daftar deliverable stories per divisi atau per epic beserta progres dinamis */
+        get: operations["StoriesController_findAll"];
+        put?: never;
+        /** Buat story baru (Koordinator divisi pemilik, Super Admin, Kormanit) */
+        post: operations["StoriesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stories/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Detail satu story beserta seluruh task perorangan */
+        get: operations["StoriesController_findOne"];
+        put?: never;
+        post?: never;
+        /** Hapus story */
+        delete: operations["StoriesController_delete"];
+        options?: never;
+        head?: never;
+        /** Perbarui deliverable story, kriteria selesai, target tanggal, atau status penutupan */
+        patch: operations["StoriesController_update"];
+        trace?: never;
+    };
+    "/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Daftar seluruh task dengan filter story, divisi, status, atau assignee */
+        get: operations["TasksController_findAll"];
+        put?: never;
+        /** Buat task baru di dalam story */
+        post: operations["TasksController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Detail satu task beserta riwayat log audit perubahan */
+        get: operations["TasksController_findOne"];
+        put?: never;
+        post?: never;
+        /** Hapus task dari story (Khusus Koordinator Divisi / Admin) */
+        delete: operations["TasksController_delete"];
+        options?: never;
+        head?: never;
+        /** Perbarui task, pindahkan status kanban, atau ubah assignee */
+        patch: operations["TasksController_update"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -647,6 +758,152 @@ export interface components {
              * @example true
              */
             isKormanit: boolean;
+        };
+        CreateEpicDto: {
+            /**
+             * @description Judul epic pekerjaan
+             * @example Penyusunan Konten Edukasi Digital
+             */
+            title: string;
+            /** @description Deskripsi lengkap epic */
+            description?: string;
+            /**
+             * @description Tanggal mulai (ISO8601)
+             * @example 2026-10-01T00:00:00.000Z
+             */
+            startDate?: string;
+            /**
+             * @description Tanggal selesai (ISO8601)
+             * @example 2026-10-31T23:59:59.000Z
+             */
+            endDate?: string;
+            /**
+             * @description Tag program kerja KKN terkait
+             * @example PROKER-01
+             */
+            prokerTag?: string;
+            /**
+             * @description Cakupan epic (DIVISION = khusus satu divisi, CROSS = lintas divisi)
+             * @default DIVISION
+             * @enum {string}
+             */
+            scope: "DIVISION" | "CROSS";
+            /** @description ID divisi pemilik (wajib jika scope DIVISION) */
+            ownerDivisionId?: string;
+            /** @description Daftar ID divisi yang berpartisipasi (khusus jika scope CROSS) */
+            participatingDivisionIds?: string[];
+        };
+        UpdateEpicDto: {
+            /** @description Judul epic pekerjaan */
+            title?: string;
+            /** @description Deskripsi lengkap epic */
+            description?: string;
+            /** @description Tanggal mulai (ISO8601) */
+            startDate?: string;
+            /** @description Tanggal selesai (ISO8601) */
+            endDate?: string;
+            /** @description Tag program kerja KKN */
+            prokerTag?: string;
+            /** @description ID divisi pemilik (khusus scope DIVISION) */
+            ownerDivisionId?: string;
+            /** @description Daftar ID divisi yang berpartisipasi (khusus scope CROSS) */
+            participatingDivisionIds?: string[];
+            /** @description Tutup atau buka kembali epic pekerjaan */
+            isClosed?: boolean;
+        };
+        CreateStoryDto: {
+            /** @description ID divisi yang bertanggung jawab atas story ini */
+            divisionId: string;
+            /** @description ID Epic induk (opsional jika pekerjaan rutin divisi) */
+            epicId?: string;
+            /**
+             * @description Judul deliverable story
+             * @example Desain Banner Utama & Template Feed IG
+             */
+            title: string;
+            /** @description Kriteria selesai (Definition of Done) */
+            doneCriteria?: string;
+            /** @description Target tanggal penyelesaian (ISO8601) */
+            targetDate?: string;
+            /** @description Tag program kerja terkait */
+            prokerTag?: string;
+            /** @description ID tiket request asal (jika dilahirkan dari request divisi) */
+            sourceRequestId?: string;
+        };
+        UpdateStoryDto: {
+            /** @description ID Epic induk (opsional) */
+            epicId?: Record<string, never>;
+            /** @description Judul story */
+            title?: string;
+            /** @description Kriteria selesai */
+            doneCriteria?: string;
+            /** @description Target tanggal */
+            targetDate?: string;
+            /** @description Tag proker */
+            prokerTag?: string;
+            /** @description Tutup atau buka kembali story */
+            isClosed?: boolean;
+        };
+        CreateTaskDto: {
+            /** @description ID Story induk tempat task ini bernaung */
+            storyId: string;
+            /**
+             * @description Judul unit kerja task
+             * @example Buat ilustrasi maskot Moa
+             */
+            title: string;
+            /** @description Deskripsi detail pekerjaan task */
+            description?: string;
+            /** @description ID anggota tim yang ditugaskan */
+            assigneeId?: string;
+            /**
+             * @description Status awal task
+             * @default BACKLOG
+             * @enum {string}
+             */
+            status: "BACKLOG" | "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE";
+            /**
+             * @description Prioritas task
+             * @default MEDIUM
+             * @enum {string}
+             */
+            priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+            /** @description Tenggat waktu pengerjaan (ISO8601) */
+            dueDate?: string;
+            /** @description Posisi urutan task dalam kolom (fractional index) */
+            position?: string;
+            /** @description Status kendala/blocker */
+            isBlocked?: boolean;
+            /** @description Alasan blocker/hambatan jika ada */
+            blockedReason?: string;
+        };
+        UpdateTaskDto: {
+            /** @description Judul task */
+            title?: string;
+            /** @description Deskripsi task */
+            description?: string;
+            /** @description ID anggota tim yang ditugaskan */
+            assigneeId?: Record<string, never>;
+            /**
+             * @description Status task
+             * @enum {string}
+             */
+            status?: "BACKLOG" | "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE";
+            /**
+             * @description Prioritas task
+             * @enum {string}
+             */
+            priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+            /** @description Tenggat waktu pengerjaan (ISO8601) */
+            dueDate?: Record<string, never>;
+            /** @description Posisi urutan task dalam kolom */
+            position?: string;
+            /** @description Status kendala/blocker */
+            isBlocked?: boolean;
+            /** @description Alasan blocker/hambatan jika ada */
+            blockedReason?: Record<string, never>;
+            /** @description Jumlah revisi */
+            revisionCount?: number;
         };
     };
     responses: never;
@@ -1458,6 +1715,433 @@ export interface operations {
         responses: {
             /** @description Tautan aktivasi baru berhasil diterbitkan */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    EpicsController_findAll: {
+        parameters: {
+            query?: {
+                /** @description Filter berdasarkan scope (DIVISION atau CROSS) */
+                scope?: string;
+                /** @description Filter berdasarkan ID divisi pemilik atau peserta */
+                divisionId?: string;
+                /** @description Filter status selesai (true = sudah ditutup, false = aktif) */
+                isClosed?: string;
+                /** @description Pencarian berdasarkan judul, deskripsi, atau tag proker */
+                search?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Daftar epic berhasil diambil */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    EpicsController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateEpicDto"];
+            };
+        };
+        responses: {
+            /** @description Epic berhasil dibuat */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Tidak memiliki wewenang untuk scope terkait */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    EpicsController_findOne: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Detail epic berhasil diambil */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Epic tidak ditemukan */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    EpicsController_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Epic berhasil dihapus */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Hanya Super Admin atau Kormanit */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    EpicsController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateEpicDto"];
+            };
+        };
+        responses: {
+            /** @description Epic berhasil diperbarui */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Epic tidak ditemukan */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StoriesController_findAll: {
+        parameters: {
+            query?: {
+                /** @description Filter berdasarkan ID divisi */
+                divisionId?: string;
+                /** @description Filter berdasarkan ID Epic */
+                epicId?: string;
+                /** @description Filter status selesai (true = sudah ditutup, false = aktif) */
+                isClosed?: string;
+                /** @description Pencarian berdasarkan judul atau tag proker */
+                search?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Daftar story berhasil diambil */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StoriesController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateStoryDto"];
+            };
+        };
+        responses: {
+            /** @description Story berhasil dibuat */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bukan Koordinator divisi terkait */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StoriesController_findOne: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Detail story berhasil diambil */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Story tidak ditemukan */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StoriesController_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Story berhasil dihapus */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bukan Koordinator divisi terkait */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StoriesController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateStoryDto"];
+            };
+        };
+        responses: {
+            /** @description Story berhasil diperbarui */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Story tidak ditemukan */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TasksController_findAll: {
+        parameters: {
+            query?: {
+                /** @description Filter berdasarkan ID Story */
+                storyId?: string;
+                /** @description Filter berdasarkan ID divisi pemilik story */
+                divisionId?: string;
+                /** @description Filter berdasarkan ID assignee/pelaksana */
+                assigneeId?: string;
+                /** @description Filter berdasarkan status task */
+                status?: "BACKLOG" | "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE";
+                /** @description Filter berdasarkan prioritas task */
+                priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+                /** @description Pencarian kata kunci judul atau deskripsi task */
+                search?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Daftar task berhasil diambil */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TasksController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTaskDto"];
+            };
+        };
+        responses: {
+            /** @description Task berhasil dibuat */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bukan anggota divisi terkait */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TasksController_findOne: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Detail task berhasil diambil */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Task tidak ditemukan */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TasksController_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Task berhasil dihapus */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bukan Koordinator divisi terkait */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TasksController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTaskDto"];
+            };
+        };
+        responses: {
+            /** @description Task berhasil diperbarui */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Task tidak ditemukan */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
