@@ -28,11 +28,12 @@ describe('TaskTransitionService', () => {
   })
 
   describe('BACKLOG -> TODO', () => {
-    it('allows coordinator to move when assignee is set', () => {
+    it('allows coordinator to move when assignee and storyPoints are set', () => {
       const task: TaskTransitionInput = {
         id: 'task-1',
         status: 'BACKLOG',
         assigneeId: 'user-assignee',
+        storyPoints: 3,
         divisionId: 'div-1',
         revisionCount: 0,
         startedAt: null,
@@ -42,11 +43,28 @@ describe('TaskTransitionService', () => {
       expect(res.status).toBe('TODO')
     })
 
+    it('rejects when storyPoints is NOT set', () => {
+      const task: TaskTransitionInput = {
+        id: 'task-1',
+        status: 'BACKLOG',
+        assigneeId: 'user-assignee',
+        storyPoints: null,
+        divisionId: 'div-1',
+        revisionCount: 0,
+        startedAt: null,
+      }
+
+      expect(() =>
+        service.validateTransition(task, 'TODO', coordinatorActor),
+      ).toThrow('Estimasi Story Point (skala 1, 2, 3, 5, 8) wajib diisi sebelum memindahkan task ke To Do.')
+    })
+
     it('rejects when assignee is NOT set', () => {
       const task: TaskTransitionInput = {
         id: 'task-1',
         status: 'BACKLOG',
         assigneeId: null,
+        storyPoints: 3,
         divisionId: 'div-1',
         revisionCount: 0,
         startedAt: null,
@@ -87,6 +105,7 @@ describe('TaskTransitionService', () => {
       const res = service.validateTransition(task, 'IN_PROGRESS', assigneeActor)
       expect(res.status).toBe('IN_PROGRESS')
       expect(res.startedAt).toBeDefined()
+      expect(res.spLockedAt).toBeDefined()
     })
 
     it('rejects another member from starting someone elses task', () => {

@@ -6,6 +6,7 @@ export interface TaskTransitionInput {
   id: string
   status: TaskStatus
   assigneeId: string | null
+  storyPoints?: number | null
   divisionId: string
   revisionCount: number
   startedAt: Date | null
@@ -21,6 +22,7 @@ export interface TaskTransitionResult {
   status: TaskStatus
   startedAt?: Date | null
   completedAt?: Date | null
+  spLockedAt?: Date | null
   revisionCount?: number
 }
 
@@ -28,8 +30,8 @@ export interface TaskTransitionResult {
 export class TaskTransitionService {
   /**
    * Memvalidasi aturan matriks transisi status Kanban sesuai PRD Workflow 4:
-   * 1. BACKLOG -> TODO: Hanya oleh Koordinator (syarat: Assignee dipilih)
-   * 2. TODO -> IN_PROGRESS: Hanya oleh Assignee (startedAt otomatis dicatat)
+   * 1. BACKLOG -> TODO: Hanya oleh Koordinator (syarat: Story Point terisi & Assignee dipilih)
+   * 2. TODO -> IN_PROGRESS: Hanya oleh Assignee (startedAt otomatis dicatat; SP dikunci)
    * 3. IN_PROGRESS -> REVIEW: Hanya oleh Assignee
    * 4. REVIEW -> DONE: Hanya oleh Koordinator (completedAt dicatat; auto-close Story)
    * 5. REVIEW -> IN_PROGRESS: Hanya oleh Koordinator (Revisi: revisionCount + 1)
@@ -58,6 +60,11 @@ export class TaskTransitionService {
           'Hanya Koordinator yang dapat memindahkan task dari Backlog ke To Do.',
         )
       }
+      if (!task.storyPoints) {
+        throw new UnprocessableEntityException(
+          'Estimasi Story Point (skala 1, 2, 3, 5, 8) wajib diisi sebelum memindahkan task ke To Do.',
+        )
+      }
       if (!task.assigneeId) {
         throw new UnprocessableEntityException(
           'Assignee wajib ditentukan sebelum memindahkan task ke To Do.',
@@ -76,6 +83,7 @@ export class TaskTransitionService {
       return {
         status: 'IN_PROGRESS',
         startedAt: task.startedAt || new Date(),
+        spLockedAt: new Date(),
       }
     }
 

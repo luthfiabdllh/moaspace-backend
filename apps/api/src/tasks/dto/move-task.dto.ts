@@ -19,4 +19,12 @@ export class MoveTaskDto {
   @IsNotEmpty({ message: 'Posisi kartu wajib diisi.' })
   @IsString({ message: 'Posisi kartu harus berupa teks.' })
   position!: string
+
+  @ApiProperty({
+    description: 'Set true untuk override peringatan overcapacity jika pemindahan mengaktifkan beban > 100%',
+    required: false,
+    default: false,
+  })
+  override?: boolean
 }
+

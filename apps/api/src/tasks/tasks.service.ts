@@ -1,4 +1,6 @@
 import {
+  BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -7,15 +9,18 @@ import {
 } from '@nestjs/common'
 import { and, asc, desc, eq, ilike, or } from 'drizzle-orm'
 import {
+  assignmentOverridesTable,
   divisionMembersTable,
   divisionsTable,
   epicsTable,
   storiesTable,
   tasksTable,
+  taskSpLogsTable,
   usersTable,
 } from '@moaspace/database'
 import { DATABASE_CONNECTION, type Database } from '../database/database.provider.js'
 import { ActivityLogsService } from '../activity-logs/activity-logs.service.js'
+import { CapacityService } from '../capacity/capacity.service.js'
 import { TaskTransitionService } from './task-transition.service.js'
 import type { RequestUser } from '../common/decorators/current-user.decorator.js'
 import type { CreateTaskDto } from './dto/create-task.dto.js'
@@ -24,6 +29,7 @@ import type { QueryTasksDto } from './dto/query-tasks.dto.js'
 import type { MoveTaskDto } from './dto/move-task.dto.js'
 import type { BlockTaskDto } from './dto/block-task.dto.js'
 import type { QueryBoardDto } from './dto/query-board.dto.js'
+import crypto from 'node:crypto'
 
 @Injectable()
 export class TasksService {
@@ -31,6 +37,7 @@ export class TasksService {
     @Inject(DATABASE_CONNECTION) private readonly db: Database,
     private readonly activityLogsService: ActivityLogsService,
     private readonly taskTransitionService: TaskTransitionService,
+    private readonly capacityService: CapacityService,
   ) {}
 
   // ─── 1. Ambil Seluruh Task dengan Filter ───────────────────────────────────
@@ -80,6 +87,8 @@ export class TasksService {
         description: tasksTable.description,
         status: tasksTable.status,
         priority: tasksTable.priority,
+        storyPoints: tasksTable.storyPoints,
+        spLockedAt: tasksTable.spLockedAt,
         dueDate: tasksTable.dueDate,
         position: tasksTable.position,
         isBlocked: tasksTable.isBlocked,
@@ -117,6 +126,8 @@ export class TasksService {
         description: tasksTable.description,
         status: tasksTable.status,
         priority: tasksTable.priority,
+        storyPoints: tasksTable.storyPoints,
+        spLockedAt: tasksTable.spLockedAt,
         dueDate: tasksTable.dueDate,
         position: tasksTable.position,
         isBlocked: tasksTable.isBlocked,
@@ -143,9 +154,25 @@ export class TasksService {
 
     const activityLogs = await this.activityLogsService.findByEntity('TASK', id)
 
+    const spLogs = await this.db
+      .select({
+        id: taskSpLogsTable.id,
+        oldSp: taskSpLogsTable.oldSp,
+        newSp: taskSpLogsTable.newSp,
+        reason: taskSpLogsTable.reason,
+        changedById: taskSpLogsTable.changedById,
+        changedByName: usersTable.name,
+        createdAt: taskSpLogsTable.createdAt,
+      })
+      .from(taskSpLogsTable)
+      .leftJoin(usersTable, eq(taskSpLogsTable.changedById, usersTable.id))
+      .where(eq(taskSpLogsTable.taskId, id))
+      .orderBy(desc(taskSpLogsTable.createdAt))
+
     return {
       ...task,
       activityLogs,
+      spLogs,
     }
   }
 
@@ -183,9 +210,72 @@ export class TasksService {
       }
     }
 
+    // Aturan Story Point skala Fibonacci KKN: 1, 2, 3, 5, 8
+    if (dto.storyPoints !== undefined && dto.storyPoints !== null) {
+      if (![1, 2, 3, 5, 8].includes(dto.storyPoints)) {
+        throw new BadRequestException(
+          'Estimasi Story Point hanya boleh bernilai 1, 2, 3, 5, atau 8. Jika lebih dari 8, pecah task menjadi beberapa sub-task.',
+        )
+      }
+    }
+
+    // Validasi To Do / In Progress awal: wajib SP dan Assignee
+    const initialStatus = dto.status || 'BACKLOG'
+    if (initialStatus === 'TODO' || initialStatus === 'IN_PROGRESS') {
+      if (!dto.storyPoints) {
+        throw new UnprocessableEntityException(
+          'Task yang berstatus To Do atau In Progress wajib memiliki estimasi Story Point (skala 1, 2, 3, 5, 8).',
+        )
+      }
+      if (!dto.assigneeId) {
+        throw new UnprocessableEntityException(
+          'Task yang berstatus To Do atau In Progress wajib memiliki Assignee.',
+        )
+      }
+    }
+
+    // Cek Overcapacity jika task aktif ditugaskan ke anggota
+    let isOvercapacity = false
+    let overcapacityUtilization = 0
+    if (
+      dto.assigneeId &&
+      dto.storyPoints &&
+      ['TODO', 'IN_PROGRESS', 'REVIEW'].includes(initialStatus)
+    ) {
+      const utilization = await this.capacityService.getUserUtilization(dto.assigneeId)
+      const currentActiveSp = utilization.activeSp
+      const capacitySp = utilization.capacitySp
+      const projectedSp = currentActiveSp + dto.storyPoints
+      const projectedUtilization = Math.round((projectedSp / capacitySp) * 100)
+
+      if (projectedUtilization > 100) {
+        if (!dto.override) {
+          throw new ConflictException({
+            statusCode: 409,
+            error: 'OVERCAPACITY_WARNING',
+            message: `Penugasan ini menyebabkan beban ${utilization.userName} mencapai ${projectedUtilization}% (melebihi kapasitas mingguan ${capacitySp} SP).`,
+            data: {
+              assigneeId: dto.assigneeId,
+              assigneeName: utilization.userName,
+              currentActiveSp,
+              taskSp: dto.storyPoints,
+              capacitySp,
+              projectedSp,
+              utilizationPercentage: projectedUtilization,
+            },
+          })
+        }
+        isOvercapacity = true
+        overcapacityUtilization = projectedUtilization
+      }
+    }
+
     const taskId = crypto.randomUUID()
     const dueDate = dto.dueDate ? new Date(dto.dueDate) : null
     const position = dto.position || `${Date.now()}`
+    const isStartingInProgress = initialStatus === 'IN_PROGRESS'
+    const spLockedAt = isStartingInProgress ? new Date() : null
+    const startedAt = isStartingInProgress ? new Date() : null
 
     const [created] = await this.db
       .insert(tasksTable)
@@ -195,8 +285,11 @@ export class TasksService {
         title: dto.title.trim(),
         description: dto.description || null,
         assigneeId: dto.assigneeId || null,
-        status: dto.status || 'BACKLOG',
+        status: initialStatus,
         priority: dto.priority || 'MEDIUM',
+        storyPoints: dto.storyPoints ?? null,
+        spLockedAt,
+        startedAt,
         dueDate,
         position,
         isBlocked: dto.isBlocked ?? false,
@@ -206,6 +299,16 @@ export class TasksService {
 
     if (!created) {
       throw new Error('Gagal membuat task.')
+    }
+
+    if (isOvercapacity && dto.assigneeId) {
+      await this.db.insert(assignmentOverridesTable).values({
+        id: crypto.randomUUID(),
+        taskId,
+        assigneeId: dto.assigneeId,
+        utilizationAtAssign: overcapacityUtilization,
+        overriddenById: user.userId,
+      })
     }
 
     // Periksa status penyelesaian story (jika sebelumnya tertutup, buka kembali)
@@ -222,11 +325,13 @@ export class TasksService {
         title: created.title,
         storyId: created.storyId,
         status: created.status,
+        storyPoints: created.storyPoints,
       },
     })
 
     return this.findOne(taskId)
   }
+
 
   // ─── 4. Perbarui Task ──────────────────────────────────────────────────────
   async update(id: string, dto: UpdateTaskDto, user: RequestUser) {
@@ -238,6 +343,8 @@ export class TasksService {
         status: tasksTable.status,
         title: tasksTable.title,
         assigneeId: tasksTable.assigneeId,
+        storyPoints: tasksTable.storyPoints,
+        spLockedAt: tasksTable.spLockedAt,
       })
       .from(tasksTable)
       .innerJoin(storiesTable, eq(tasksTable.storyId, storiesTable.id))
@@ -247,8 +354,10 @@ export class TasksService {
       throw new NotFoundException('Task tidak ditemukan.')
     }
 
-    // Validasi wewenang
-    if (!user.isSuperAdmin && !user.isKormanit) {
+    const isGlobalAdmin = Boolean(user.isSuperAdmin || user.isKormanit)
+    let isCoordinator = isGlobalAdmin
+
+    if (!isGlobalAdmin) {
       const [membership] = await this.db
         .select()
         .from(divisionMembersTable)
@@ -264,9 +373,89 @@ export class TasksService {
           'Anda tidak memiliki akses untuk mengubah task divisi ini.',
         )
       }
+      isCoordinator = membership.role === 'COORDINATOR'
+    }
+
+    // Validasi Story Point Fibonacci: 1, 2, 3, 5, 8
+    if (dto.storyPoints !== undefined && dto.storyPoints !== null) {
+      if (![1, 2, 3, 5, 8].includes(dto.storyPoints)) {
+        throw new BadRequestException(
+          'Estimasi Story Point hanya boleh bernilai 1, 2, 3, 5, atau 8. Jika lebih dari 8, pecah task menjadi beberapa sub-task.',
+        )
+      }
     }
 
     const updates: Partial<typeof tasksTable.$inferInsert> = {}
+
+    // Aturan Kunci SP:
+    // SP otomatis terkunci ketika task beralih ke IN_PROGRESS. Pengubahan setelahnya hanya oleh Koordinator dengan mencantumkan alasan wajib yang dicatat di task_sp_logs.
+    if (dto.storyPoints !== undefined && dto.storyPoints !== existing.storyPoints) {
+      const isSpLocked = Boolean(existing.spLockedAt || ['IN_PROGRESS', 'REVIEW', 'DONE'].includes(existing.status))
+      if (isSpLocked) {
+        if (!isCoordinator) {
+          throw new ForbiddenException(
+            'Story Point telah dikunci karena pengerjaan task sudah dimulai. Hanya Koordinator yang berwenang mengubah Story Point.',
+          )
+        }
+        if (!dto.spReason || !dto.spReason.trim()) {
+          throw new BadRequestException(
+            'Perubahan Story Point yang sudah terkunci wajib menyertakan alasan yang jelas (spReason).',
+          )
+        }
+        await this.db.insert(taskSpLogsTable).values({
+          id: crypto.randomUUID(),
+          taskId: id,
+          oldSp: existing.storyPoints,
+          newSp: dto.storyPoints ?? 0,
+          changedById: user.userId,
+          reason: dto.spReason.trim(),
+        })
+      }
+      updates.storyPoints = dto.storyPoints
+    }
+
+    // Overcapacity Check jika assignee berubah atau baru ditentukan
+    const targetStatus = dto.status ?? existing.status
+    const effectiveSp = dto.storyPoints !== undefined ? dto.storyPoints : (existing.storyPoints ?? 0)
+
+    let isOvercapacity = false
+    let overcapacityUtilization = 0
+
+    if (
+      dto.assigneeId !== undefined &&
+      dto.assigneeId !== null &&
+      dto.assigneeId !== existing.assigneeId &&
+      ['TODO', 'IN_PROGRESS', 'REVIEW'].includes(targetStatus) &&
+      effectiveSp &&
+      effectiveSp > 0
+    ) {
+      const utilization = await this.capacityService.getUserUtilization(dto.assigneeId)
+      const currentActiveSp = utilization.activeSp
+      const capacitySp = utilization.capacitySp
+      const projectedSp = currentActiveSp + effectiveSp
+      const projectedUtilization = Math.round((projectedSp / capacitySp) * 100)
+
+      if (projectedUtilization > 100) {
+        if (!dto.override) {
+          throw new ConflictException({
+            statusCode: 409,
+            error: 'OVERCAPACITY_WARNING',
+            message: `Penugasan ini menyebabkan beban ${utilization.userName} mencapai ${projectedUtilization}% (melebihi kapasitas mingguan ${capacitySp} SP).`,
+            data: {
+              assigneeId: dto.assigneeId,
+              assigneeName: utilization.userName,
+              currentActiveSp,
+              taskSp: effectiveSp,
+              capacitySp,
+              projectedSp,
+              utilizationPercentage: projectedUtilization,
+            },
+          })
+        }
+        isOvercapacity = true
+        overcapacityUtilization = projectedUtilization
+      }
+    }
 
     if (dto.title !== undefined) updates.title = dto.title.trim()
     if (dto.description !== undefined) updates.description = dto.description || null
@@ -290,6 +479,9 @@ export class TasksService {
       } else if (existing.status === 'BACKLOG' && (dto.status === 'TODO' || dto.status === 'IN_PROGRESS')) {
         updates.startedAt = new Date()
       }
+      if (dto.status === 'IN_PROGRESS' && !existing.spLockedAt) {
+        updates.spLockedAt = new Date()
+      }
     }
 
     if (Object.keys(updates).length > 0) {
@@ -297,6 +489,16 @@ export class TasksService {
         .update(tasksTable)
         .set(updates)
         .where(eq(tasksTable.id, id))
+    }
+
+    if (isOvercapacity && dto.assigneeId) {
+      await this.db.insert(assignmentOverridesTable).values({
+        id: crypto.randomUUID(),
+        taskId: id,
+        assigneeId: dto.assigneeId,
+        utilizationAtAssign: overcapacityUtilization,
+        overriddenById: user.userId,
+      })
     }
 
     // Periksa apakah semua task dalam story selesai -> auto-close story
@@ -313,16 +515,19 @@ export class TasksService {
         status: existing.status,
         title: existing.title,
         assigneeId: existing.assigneeId,
+        storyPoints: existing.storyPoints,
       },
       after: {
         status: updates.status ?? existing.status,
         title: updates.title ?? existing.title,
         assigneeId: updates.assigneeId !== undefined ? updates.assigneeId : existing.assigneeId,
+        storyPoints: updates.storyPoints !== undefined ? updates.storyPoints : existing.storyPoints,
       },
     })
 
     return this.findOne(id)
   }
+
 
   // ─── 5. Hapus Task ─────────────────────────────────────────────────────────
   async delete(id: string, user: RequestUser) {
@@ -424,6 +629,8 @@ export class TasksService {
         status: tasksTable.status,
         position: tasksTable.position,
         assigneeId: tasksTable.assigneeId,
+        storyPoints: tasksTable.storyPoints,
+        spLockedAt: tasksTable.spLockedAt,
         storyId: tasksTable.storyId,
         divisionId: storiesTable.divisionId,
         revisionCount: tasksTable.revisionCount,
@@ -457,10 +664,50 @@ export class TasksService {
     const isAssignee = Boolean(task.assigneeId && task.assigneeId === user.userId)
 
     const transition = this.taskTransitionService.validateTransition(
-      task,
+      {
+        id: task.id,
+        status: task.status,
+        assigneeId: task.assigneeId,
+        storyPoints: task.storyPoints,
+        divisionId: task.divisionId,
+        revisionCount: task.revisionCount,
+        startedAt: task.startedAt,
+      },
       dto.status,
       { userId: user.userId, isCoordinator, isAssignee },
     )
+
+    // Cek Overcapacity jika bergerak dari BACKLOG ke TODO (mengaktifkan beban kerja anggota)
+    let isOvercapacity = false
+    let overcapacityUtilization = 0
+    if (task.status === 'BACKLOG' && dto.status === 'TODO' && task.assigneeId && task.storyPoints) {
+      const utilization = await this.capacityService.getUserUtilization(task.assigneeId)
+      const currentActiveSp = utilization.activeSp
+      const capacitySp = utilization.capacitySp
+      const projectedSp = currentActiveSp + task.storyPoints
+      const projectedUtilization = Math.round((projectedSp / capacitySp) * 100)
+
+      if (projectedUtilization > 100) {
+        if (!dto.override) {
+          throw new ConflictException({
+            statusCode: 409,
+            error: 'OVERCAPACITY_WARNING',
+            message: `Memindahkan task ini ke To Do menyebabkan beban ${utilization.userName} mencapai ${projectedUtilization}% (melebihi kapasitas mingguan ${capacitySp} SP).`,
+            data: {
+              assigneeId: task.assigneeId,
+              assigneeName: utilization.userName,
+              currentActiveSp,
+              taskSp: task.storyPoints,
+              capacitySp,
+              projectedSp,
+              utilizationPercentage: projectedUtilization,
+            },
+          })
+        }
+        isOvercapacity = true
+        overcapacityUtilization = projectedUtilization
+      }
+    }
 
     const updatePayload: Record<string, any> = {
       status: transition.status,
@@ -473,6 +720,9 @@ export class TasksService {
     if (transition.completedAt !== undefined) {
       updatePayload.completedAt = transition.completedAt
     }
+    if (transition.spLockedAt !== undefined) {
+      updatePayload.spLockedAt = transition.spLockedAt
+    }
     if (transition.revisionCount !== undefined) {
       updatePayload.revisionCount = transition.revisionCount
     }
@@ -481,6 +731,16 @@ export class TasksService {
       .update(tasksTable)
       .set(updatePayload)
       .where(eq(tasksTable.id, id))
+
+    if (isOvercapacity && task.assigneeId) {
+      await this.db.insert(assignmentOverridesTable).values({
+        id: crypto.randomUUID(),
+        taskId: id,
+        assigneeId: task.assigneeId,
+        utilizationAtAssign: overcapacityUtilization,
+        overriddenById: user.userId,
+      })
+    }
 
     // Cek auto-close atau re-open Story
     await this.checkAndUpdateStoryCompletion(task.storyId)
@@ -497,6 +757,7 @@ export class TasksService {
 
     return this.findOne(id)
   }
+
 
   // ─── 7. Tandai Task sebagai Terkendala (Blocked) ──────────────────────────
   async block(id: string, dto: BlockTaskDto, user: RequestUser) {
@@ -679,6 +940,8 @@ export class TasksService {
         description: tasksTable.description,
         status: tasksTable.status,
         priority: tasksTable.priority,
+        storyPoints: tasksTable.storyPoints,
+        spLockedAt: tasksTable.spLockedAt,
         dueDate: tasksTable.dueDate,
         position: tasksTable.position,
         isBlocked: tasksTable.isBlocked,
@@ -724,6 +987,8 @@ export class TasksService {
         description: tasksTable.description,
         status: tasksTable.status,
         priority: tasksTable.priority,
+        storyPoints: tasksTable.storyPoints,
+        spLockedAt: tasksTable.spLockedAt,
         dueDate: tasksTable.dueDate,
         position: tasksTable.position,
         isBlocked: tasksTable.isBlocked,

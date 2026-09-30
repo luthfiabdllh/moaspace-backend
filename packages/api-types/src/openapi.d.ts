@@ -454,6 +454,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/capacity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ambil Kapasitas & Utilisasi Pengguna Saat Ini
+         * @description Mengambil metrik beban kerja aktif dan kuota kapasitas mingguan akun yang sedang login.
+         */
+        get: operations["CapacityController_getMyCapacity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/capacity/request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ajukan Penyesuaian Kapasitas Mingguan
+         * @description Anggota mengajukan perubahan kapasitas kerja mingguan beserta alasan/catatan izin.
+         */
+        post: operations["CapacityController_requestAdjustment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/divisions/{id}/capacity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ambil Utilisasi Seluruh Anggota Divisi
+         * @description Mengambil daftar kapasitas dan beban kerja anggota divisi (termasuk task dari divisi lain) untuk pekan bersangkutan.
+         */
+        get: operations["CapacityController_getDivisionCapacities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/capacity/requests/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Persetujuan / Penolakan Pengajuan Kapasitas
+         * @description Koordinator divisi atau Super Admin menyetujui atau menolak pengajuan penyesuaian kapasitas anggota.
+         */
+        patch: operations["CapacityController_reviewAdjustment"];
+        trace?: never;
+    };
+    "/capacity/cron/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trigger Pembentukan Baris Kapasitas Mingguan (Cron)
+         * @description Membentuk baris kapasitas default untuk seluruh anggota aktif pada pekan berjalan.
+         */
+        post: operations["CapacityController_runCron"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users": {
         parameters: {
             query?: never;
@@ -806,6 +906,16 @@ export interface components {
             priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
             /** @description Tenggat waktu pengerjaan (ISO8601) */
             dueDate?: string;
+            /**
+             * @description Estimasi Story Point (skala Fibonacci KKN: 1, 2, 3, 5, 8)
+             * @example 3
+             */
+            storyPoints?: number;
+            /**
+             * @description Set true untuk override peringatan overcapacity jika utilisasi anggota > 100%
+             * @default false
+             */
+            override: boolean;
             /** @description Posisi urutan task dalam kolom (fractional index) */
             position?: string;
             /** @description Status kendala/blocker */
@@ -832,6 +942,21 @@ export interface components {
             priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
             /** @description Tenggat waktu pengerjaan (ISO8601) */
             dueDate?: Record<string, never>;
+            /**
+             * @description Estimasi Story Point (skala Fibonacci KKN: 1, 2, 3, 5, 8)
+             * @example 3
+             */
+            storyPoints?: Record<string, never>;
+            /**
+             * @description Alasan perubahan Story Point (wajib jika task sudah pernah/sedang In Progress)
+             * @example Klien meminta penambahan 3 variasi revisi desain poster
+             */
+            spReason?: string;
+            /**
+             * @description Set true untuk override peringatan overcapacity jika utilisasi anggota > 100%
+             * @default false
+             */
+            override: boolean;
             /** @description Posisi urutan task dalam kolom */
             position?: string;
             /** @description Status kendala/blocker */
@@ -852,6 +977,11 @@ export interface components {
              * @example a0
              */
             position: string;
+            /**
+             * @description Set true untuk override peringatan overcapacity jika pemindahan mengaktifkan beban > 100%
+             * @default false
+             */
+            override: boolean;
         };
         BlockTaskDto: {
             /**
@@ -859,6 +989,36 @@ export interface components {
              * @example Menunggu asset desain dari divisi Media Kreatif
              */
             reason: string;
+        };
+        CreateCapacityRequestDto: {
+            /**
+             * @description Kapasitas Story Point yang diajukan untuk minggu berjalan (1-30)
+             * @example 6
+             */
+            requestedSp: number;
+            /**
+             * @description Alasan penyesuaian kapasitas kerja
+             * @example Izin sakit 2 hari dan menjadi PJ acara kampus pada hari Kamis
+             */
+            note: string;
+        };
+        ReviewCapacityRequestDto: {
+            /**
+             * @description Tindakan persetujuan: APPROVE atau REJECT
+             * @example APPROVE
+             * @enum {string}
+             */
+            action: "APPROVE" | "REJECT";
+            /**
+             * @description Kapasitas final yang disetujui (opsional jika ingin mengubah nilai dari requestedSp)
+             * @example 6
+             */
+            approvedSp?: number;
+            /**
+             * @description Catatan reviewer jika menolak atau mengubah nilai
+             * @example Kapasitas tetap 10 SP karena acara kampus diadakan di luar jam kerja KKN.
+             */
+            note?: string;
         };
         CreateUserDto: {
             /**
@@ -1894,6 +2054,114 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Daftar tugas user aktif terkelompok per kolom status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CapacityController_getMyCapacity: {
+        parameters: {
+            query?: {
+                /** @description Awal pekan (Senin) format YYYY-MM-DD. Jika kosong menggunakan pekan berjalan. */
+                weekStart?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Metrik utilisasi berhasil diambil. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CapacityController_requestAdjustment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCapacityRequestDto"];
+            };
+        };
+        responses: {
+            /** @description Pengajuan penyesuaian kapasitas berhasil dikirim. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CapacityController_getDivisionCapacities: {
+        parameters: {
+            query?: {
+                /** @description Awal pekan (Senin) format YYYY-MM-DD. Jika kosong menggunakan pekan berjalan. */
+                weekStart?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Daftar kapasitas anggota berhasil diambil. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CapacityController_reviewAdjustment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewCapacityRequestDto"];
+            };
+        };
+        responses: {
+            /** @description Pengajuan kapasitas berhasil ditinjau. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CapacityController_runCron: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sinkronisasi kapasitas mingguan selesai. */
             200: {
                 headers: {
                     [name: string]: unknown;

@@ -10,9 +10,11 @@ import { DatabaseModule } from './database/database.module.js'
 import { ActivityLogsModule } from './activity-logs/activity-logs.module.js'
 import { DivisionsModule } from './divisions/divisions.module.js'
 import { UsersModule } from './users/users.module.js'
+import { ScheduleModule } from '@nestjs/schedule'
 import { EpicsModule } from './epics/epics.module.js'
 import { StoriesModule } from './stories/stories.module.js'
 import { TasksModule } from './tasks/tasks.module.js'
+import { CapacityModule } from './capacity/capacity.module.js'
 
 @Module({
   imports: [
@@ -20,6 +22,7 @@ import { TasksModule } from './tasks/tasks.module.js'
       isGlobal: true,
       envFilePath: ['.env', '../../.env'],
     }),
+    ScheduleModule.forRoot(),
     DatabaseModule,
     AuthModule,
     DivisionsModule,
@@ -28,6 +31,7 @@ import { TasksModule } from './tasks/tasks.module.js'
     EpicsModule,
     StoriesModule,
     TasksModule,
+    CapacityModule,
   ],
   controllers: [AppController],
   providers: [

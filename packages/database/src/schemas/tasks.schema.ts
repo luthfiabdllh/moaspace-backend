@@ -31,6 +31,8 @@ export const tasksTable = pgTable('tasks', {
   priority: taskPriorityEnum('priority').notNull().default('MEDIUM'),
   dueDate: timestamp('due_date', { withTimezone: true }),
   position: varchar('position', { length: 50 }).notNull().default('0'),
+  storyPoints: integer('story_points'),
+  spLockedAt: timestamp('sp_locked_at', { withTimezone: true }),
   isBlocked: boolean('is_blocked').notNull().default(false),
   blockedReason: text('blocked_reason'),
   startedAt: timestamp('started_at', { withTimezone: true }),

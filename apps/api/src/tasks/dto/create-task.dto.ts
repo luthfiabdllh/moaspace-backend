@@ -59,6 +59,24 @@ export class CreateTaskDto {
   @IsDateString({}, { message: 'Format tenggat waktu tidak valid.' })
   dueDate?: string
 
+  @ApiPropertyOptional({
+    description: 'Estimasi Story Point (skala Fibonacci KKN: 1, 2, 3, 5, 8)',
+    example: 3,
+  })
+  @IsOptional()
+  @IsEnum([1, 2, 3, 5, 8], {
+    message: 'Skala Story Point hanya boleh 1, 2, 3, 5, atau 8. Estimasi > 8 wajib dipecah.',
+  })
+  storyPoints?: number
+
+  @ApiPropertyOptional({
+    description: 'Set true untuk override peringatan overcapacity jika utilisasi anggota > 100%',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  override?: boolean
+
   @ApiPropertyOptional({ description: 'Posisi urutan task dalam kolom (fractional index)' })
   @IsOptional()
   @IsString()

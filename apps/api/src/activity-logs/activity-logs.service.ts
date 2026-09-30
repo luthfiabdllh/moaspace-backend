@@ -9,7 +9,7 @@ import {
 import type { QueryActivityLogsDto } from './dto/query-activity-logs.dto.js'
 
 export interface RecordActivityLogParams {
-  entityType: 'USER' | 'DIVISION' | 'DIVISION_MEMBER' | 'EPIC' | 'STORY' | 'TASK' | 'REQUEST'
+  entityType: 'USER' | 'DIVISION' | 'DIVISION_MEMBER' | 'EPIC' | 'STORY' | 'TASK' | 'REQUEST' | 'MEMBER_CAPACITY'
   entityId: string
   action: string
   actorId?: string | null
