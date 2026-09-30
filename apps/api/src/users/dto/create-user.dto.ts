@@ -18,12 +18,12 @@ export class CreateUserDto {
   divisionId!: string
 
   @ApiProperty({
-    enum: ['MEMBER', 'COORDINATOR', 'KORMANIT'],
+    enum: ['MEMBER', 'COORDINATOR', 'KORMANIT', 'KOORDINATOR_MAHASISWA_UNIT'],
     example: 'MEMBER',
-    description: 'Role anggota di divisi atau Kormanit (Pimpinan Unit)',
+    description: 'Role anggota di divisi atau Koordinator Mahasiswa Unit (Akses Penuh)',
   })
-  @IsEnum(['MEMBER', 'COORDINATOR', 'KORMANIT'], {
-    message: 'Role harus berupa MEMBER, COORDINATOR, atau KORMANIT',
+  @IsEnum(['MEMBER', 'COORDINATOR', 'KORMANIT', 'KOORDINATOR_MAHASISWA_UNIT'], {
+    message: 'Role harus berupa MEMBER, COORDINATOR, atau KOORDINATOR_MAHASISWA_UNIT',
   })
-  role!: 'MEMBER' | 'COORDINATOR' | 'KORMANIT'
+  role!: 'MEMBER' | 'COORDINATOR' | 'KORMANIT' | 'KOORDINATOR_MAHASISWA_UNIT'
 }

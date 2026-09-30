@@ -234,10 +234,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Daftar seluruh anggota tim KKN beserta divisi & role (Super Admin) */
+        /** Daftar seluruh anggota tim KKN beserta divisi & role (Super Admin & Koordinator Mahasiswa Unit) */
         get: operations["UsersController_findAll"];
         put?: never;
-        /** Daftarkan anggota baru tim KKN dan kirim tautan aktivasi (Super Admin) */
+        /** Daftarkan anggota baru tim KKN dan kirim tautan aktivasi (Super Admin & Koordinator Mahasiswa Unit) */
         post: operations["UsersController_create"];
         delete?: never;
         options?: never;
@@ -258,8 +258,93 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Ubah status aktif/nonaktif anggota (Super Admin) */
+        /** Ubah status aktif/nonaktif anggota (Super Admin & Koordinator Mahasiswa Unit) */
         patch: operations["UsersController_updateStatus"];
+        trace?: never;
+    };
+    "/users/{id}/divisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Tambahkan anggota ke divisi lain (Multi-divisi) (Super Admin & Koordinator Mahasiswa Unit) */
+        post: operations["UsersController_addDivision"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{id}/divisions/{divisionId}/role": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Ubah role anggota di divisi tertentu (Super Admin & Koordinator Mahasiswa Unit) */
+        patch: operations["UsersController_updateDivisionRole"];
+        trace?: never;
+    };
+    "/users/{id}/divisions/{divisionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Hapus keanggotaan divisi seorang anggota (Super Admin & Koordinator Mahasiswa Unit) */
+        delete: operations["UsersController_removeDivision"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{id}/divisions/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pindahkan anggota dari satu divisi ke divisi lain (Super Admin & Koordinator Mahasiswa Unit) */
+        post: operations["UsersController_moveDivision"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{id}/global-role": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Ubah hak akses Koordinator Mahasiswa Unit (Super Admin & Koordinator Mahasiswa Unit) */
+        patch: operations["UsersController_updateGlobalRole"];
         trace?: never;
     };
     "/users/{id}/resend-activation": {
@@ -271,8 +356,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Kirim ulang link aktivasi untuk anggota yang belum aktif (Super Admin) */
+        /** Kirim ulang link aktivasi untuk anggota yang belum aktif (Super Admin & Koordinator Mahasiswa Unit) */
         post: operations["UsersController_resendActivation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/activity-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ambil daftar activity log dengan pencarian, filter, sorting & paginasi (Super Admin & Koordinator Mahasiswa Unit) */
+        get: operations["ActivityLogsController_getLogs"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -344,11 +446,11 @@ export interface components {
             /** @description ID divisi penempatan */
             divisionId: string;
             /**
-             * @description Role anggota di divisi atau Kormanit (Pimpinan Unit)
+             * @description Role anggota di divisi atau Koordinator Mahasiswa Unit (Akses Penuh)
              * @example MEMBER
              * @enum {string}
              */
-            role: "MEMBER" | "COORDINATOR" | "KORMANIT";
+            role: "MEMBER" | "COORDINATOR" | "KORMANIT" | "KOORDINATOR_MAHASISWA_UNIT";
         };
         UpdateUserStatusDto: {
             /**
@@ -357,6 +459,42 @@ export interface components {
              * @enum {string}
              */
             status: "ACTIVE" | "INACTIVE";
+        };
+        AddUserDivisionDto: {
+            /** @description ID divisi yang akan ditambahkan */
+            divisionId: string;
+            /**
+             * @description Role anggota di divisi ini
+             * @example MEMBER
+             * @enum {string}
+             */
+            role: "MEMBER" | "COORDINATOR";
+        };
+        UpdateUserDivisionRoleDto: {
+            /**
+             * @description Role baru anggota di divisi ini
+             * @example COORDINATOR
+             * @enum {string}
+             */
+            role: "MEMBER" | "COORDINATOR";
+        };
+        MoveUserDivisionDto: {
+            /** @description ID divisi asal */
+            fromDivisionId: string;
+            /** @description ID divisi tujuan */
+            toDivisionId: string;
+            /**
+             * @description Role di divisi tujuan (default mengikuti role di divisi asal)
+             * @enum {string}
+             */
+            role?: "MEMBER" | "COORDINATOR";
+        };
+        UpdateUserGlobalRoleDto: {
+            /**
+             * @description Status peran Koordinator Mahasiswa Unit (akses penuh setara Super Admin)
+             * @example true
+             */
+            isKormanit: boolean;
         };
     };
     responses: never;
@@ -773,6 +911,124 @@ export interface operations {
             };
         };
     };
+    UsersController_addDivision: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddUserDivisionDto"];
+            };
+        };
+        responses: {
+            /** @description Keanggotaan divisi berhasil ditambahkan */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    UsersController_updateDivisionRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                divisionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateUserDivisionRoleDto"];
+            };
+        };
+        responses: {
+            /** @description Role divisi berhasil diubah */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    UsersController_removeDivision: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                divisionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Keanggotaan divisi berhasil dihapus */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    UsersController_moveDivision: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveUserDivisionDto"];
+            };
+        };
+        responses: {
+            /** @description Anggota berhasil dipindahkan ke divisi baru */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    UsersController_updateGlobalRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateUserGlobalRoleDto"];
+            };
+        };
+        responses: {
+            /** @description Peran Koordinator Mahasiswa Unit berhasil diperbarui */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     UsersController_resendActivation: {
         parameters: {
             query?: never;
@@ -785,6 +1041,41 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Tautan aktivasi baru berhasil diterbitkan */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ActivityLogsController_getLogs: {
+        parameters: {
+            query?: {
+                /** @description Kata kunci pencarian nama aktor, email, aksi, atau detail */
+                search?: string;
+                /** @description Filter jenis aksi aktivitas */
+                action?: string;
+                /** @description Filter tipe entitas (USER, DIVISION_MEMBER, EPIC, dll) */
+                entityType?: string;
+                /** @description Filter ID entitas tertentu */
+                entityId?: string;
+                /** @description Kolom pengurutan data */
+                sortBy?: "createdAt" | "action" | "actorName";
+                /** @description Arah pengurutan data */
+                sortOrder?: "asc" | "desc";
+                /** @description Nomor halaman (1-indexed) */
+                page?: number;
+                /** @description Jumlah data per halaman (maksimal 100) */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Daftar activity log beserta metadata paginasi berhasil diambil */
             200: {
                 headers: {
                     [name: string]: unknown;

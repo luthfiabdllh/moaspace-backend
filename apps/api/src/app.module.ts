@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module.js'
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js'
 import { AllExceptionsFilter } from './common/filters/http-exception.filter.js'
 import { DatabaseModule } from './database/database.module.js'
+import { ActivityLogsModule } from './activity-logs/activity-logs.module.js'
 import { DivisionsModule } from './divisions/divisions.module.js'
 import { UsersModule } from './users/users.module.js'
 
@@ -20,6 +21,7 @@ import { UsersModule } from './users/users.module.js'
     AuthModule,
     DivisionsModule,
     UsersModule,
+    ActivityLogsModule,
   ],
   controllers: [AppController],
   providers: [
