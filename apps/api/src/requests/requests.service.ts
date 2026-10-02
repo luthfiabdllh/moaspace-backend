@@ -325,7 +325,7 @@ export class RequestsService {
         fromDivisionName: sql<string>`from_div.name`,
         toDivisionName: sql<string>`to_div.name`,
         requesterName: sql<string>`req_user.name`,
-        requesterAvatar: sql<string>`req_user.avatar_url`,
+        requesterAvatar: sql<string | null>`CAST(null AS text)`,
         templateName: sql<string | null>`tmpl.name`,
       })
       .from(requestsTable)
@@ -375,7 +375,7 @@ export class RequestsService {
         toDivisionName: sql<string>`to_div.name`,
         requesterName: sql<string>`req_user.name`,
         requesterEmail: sql<string>`req_user.email`,
-        requesterAvatar: sql<string>`req_user.avatar_url`,
+        requesterAvatar: sql<string | null>`CAST(null AS text)`,
         templateName: sql<string | null>`tmpl.name`,
       })
       .from(requestsTable)
@@ -421,7 +421,7 @@ export class RequestsService {
         createdAt: requestEventsTable.createdAt,
         actorId: requestEventsTable.actorId,
         actorName: sql<string>`act_user.name`,
-        actorAvatar: sql<string>`act_user.avatar_url`,
+        actorAvatar: sql<string | null>`CAST(null AS text)`,
       })
       .from(requestEventsTable)
       .innerJoin(
@@ -944,6 +944,10 @@ export class RequestsService {
       })
       .where(eq(requestsTable.id, id))
       .returning()
+
+    if (!updated) {
+      throw new NotFoundException(`Permohonan dengan ID ${id} tidak ditemukan.`)
+    }
 
     await this.activityLogsService.record({
       entityType: 'REQUEST',

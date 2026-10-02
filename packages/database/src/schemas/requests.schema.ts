@@ -1,8 +1,8 @@
 import { jsonb, pgEnum, pgTable, text, timestamp, varchar } from 'drizzle-orm/pg-core'
-import { divisionsTable } from './divisions.schema.js'
-import { usersTable } from './users.schema.js'
-import { storiesTable } from './stories.schema.js'
-import { tasksTable } from './tasks.schema.js'
+import { divisionsTable } from './divisions.schema'
+import { usersTable } from './users.schema'
+import { storiesTable } from './stories.schema'
+import { tasksTable } from './tasks.schema'
 
 export const requestStatusEnum = pgEnum('request_status', [
   'DRAFT',

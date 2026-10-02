@@ -421,7 +421,7 @@ describe('RequestsService', () => {
         mockUser,
       )
 
-      expect(result.status).toBe('DRAFT')
+      expect(result?.status).toBe('DRAFT')
     })
 
     it('submits a draft request and transitions to SUBMITTED or WAITING_ORIGIN_APPROVAL', async () => {
@@ -465,7 +465,7 @@ describe('RequestsService', () => {
       })
 
       const res = await service.submitDraft('req-draft-1', mockUser)
-      expect(res.status).toBe('SUBMITTED')
+      expect(res?.status).toBe('SUBMITTED')
     })
   })
 })
