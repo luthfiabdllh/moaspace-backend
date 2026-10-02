@@ -18,6 +18,7 @@ export const epicsTable = pgTable('epics', {
   createdById: text('created_by_id')
     .notNull()
     .references(() => usersTable.id, { onDelete: 'cascade' }),
+  sourceRequestId: text('source_request_id'),
   closedAt: timestamp('closed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true })

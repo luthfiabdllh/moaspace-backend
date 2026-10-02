@@ -9,6 +9,7 @@ import { and, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm'
 import {
   divisionMembersTable,
   divisionsTable,
+  epicDivisionsTable,
   epicsTable,
   requestEventsTable,
   requestTemplatesTable,
@@ -28,6 +29,7 @@ import type { OriginApprovalDto } from './dto/origin-approval.dto.js'
 import type { TriageRequestDto } from './dto/triage-request.dto.js'
 import type { RespondInfoDto } from './dto/respond-info.dto.js'
 import type { ConvertToStoryDto } from './dto/convert-to-story.dto.js'
+import type { ConvertToEpicDto } from './dto/convert-to-epic.dto.js'
 import type { DeliverRequestDto } from './dto/deliver-request.dto.js'
 import type { ConfirmRequestDto } from './dto/confirm-request.dto.js'
 import type { QueryRequestsDto } from './dto/query-requests.dto.js'
@@ -367,6 +369,7 @@ export class RequestsService {
         requesterId: requestsTable.requesterId,
         templateId: requestsTable.templateId,
         linkedStoryId: requestsTable.linkedStoryId,
+        linkedEpicId: requestsTable.linkedEpicId,
         sourceTaskId: requestsTable.sourceTaskId,
         sourceStoryId: requestsTable.sourceStoryId,
         createdAt: requestsTable.createdAt,
@@ -469,6 +472,61 @@ export class RequestsService {
       }
     }
 
+    let linkedEpic: {
+      id: string
+      title: string
+      scope: 'DIVISION' | 'CROSS'
+      progressPercentage: number
+      totalTasks: number
+      doneTasks: number
+      storiesCount: number
+    } | null = null
+
+    if (request.linkedEpicId) {
+      const [epicRow] = await this.db
+        .select({
+          id: epicsTable.id,
+          title: epicsTable.title,
+          scope: epicsTable.scope,
+        })
+        .from(epicsTable)
+        .where(eq(epicsTable.id, request.linkedEpicId))
+
+      if (epicRow) {
+        const epicStories = await this.db
+          .select({ id: storiesTable.id })
+          .from(storiesTable)
+          .where(eq(storiesTable.epicId, epicRow.id))
+
+        let totalTasks = 0
+        let doneTasks = 0
+
+        if (epicStories.length > 0) {
+          const sIds = epicStories.map((s) => s.id)
+          const epicTasks = await this.db
+            .select({ status: tasksTable.status })
+            .from(tasksTable)
+            .where(inArray(tasksTable.storyId, sIds))
+
+          totalTasks = epicTasks.length
+          doneTasks = epicTasks.filter((t) => t.status === 'DONE').length
+        }
+
+        const progressPercentage =
+          totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0
+
+        linkedEpic = {
+          id: epicRow.id,
+          title: epicRow.title,
+          scope: epicRow.scope,
+          progressPercentage,
+          totalTasks,
+          doneTasks,
+          storiesCount: epicStories.length,
+        }
+      }
+    }
+
     // Hak akses aksi
     const isFromCoordinator =
       isSuper || (await this.isDivisionCoordinator(request.fromDivisionId, user.userId))
@@ -486,6 +544,7 @@ export class RequestsService {
       canRespondInfo:
         (isRequester || isFromCoordinator) && request.status === 'NEED_INFO',
       canConvertToStory: isToCoordinator && request.status === 'ACCEPTED',
+      canConvertToEpic: isToCoordinator && request.status === 'ACCEPTED',
       canDeliver: isToCoordinator && request.status === 'IN_PROGRESS',
       canConfirmOrRevise:
         (isRequester || isFromCoordinator) && request.status === 'DELIVERED',
@@ -495,6 +554,7 @@ export class RequestsService {
       ...request,
       events,
       linkedStory,
+      linkedEpic,
       permissions,
     }
   }
@@ -763,6 +823,138 @@ export class RequestsService {
     })
 
     return { request: updatedRequest, story }
+  }
+
+  /**
+   * Konversi request yang disetujui (ACCEPTED) menjadi Inisiatif / Epic (Level 1)
+   */
+  async convertToEpic(id: string, dto: ConvertToEpicDto, user: RequestUser) {
+    const request = await this.getRequestOrThrow(id)
+
+    if (request.status !== 'ACCEPTED') {
+      throw new BadRequestException(
+        `Hanya request dengan status ACCEPTED yang dapat dikonversi menjadi Inisiatif/Epic (status saat ini: ${request.status}).`,
+      )
+    }
+
+    await this.assertCoordinator(
+      request.toDivisionId,
+      user,
+      'mengonversi request menjadi Inisiatif / Epic di divisi tujuan',
+    )
+
+    const epicId = randomUUID()
+    const epicTitle = dto.title?.trim() || request.title
+    const epicScope = dto.scope || 'CROSS'
+
+    const [epic] = await this.db
+      .insert(epicsTable)
+      .values({
+        id: epicId,
+        title: epicTitle,
+        description:
+          dto.description?.trim() ||
+          `Inisiatif kolaborasi yang bermula dari permohonan: ${request.title}`,
+        startDate: new Date(),
+        endDate: dto.targetDate
+          ? new Date(dto.targetDate)
+          : request.deadline,
+        prokerTag: dto.prokerTag ?? null,
+        scope: epicScope,
+        ownerDivisionId: request.toDivisionId,
+        createdById: user.userId,
+        sourceRequestId: request.id,
+      })
+      .returning()
+
+    if (!epic) {
+      throw new BadRequestException('Gagal membuat Inisiatif / Epic untuk permohonan ini.')
+    }
+
+    // Jika scope CROSS, daftarkan divisi yang berpartisipasi ke epicDivisionsTable
+    if (epicScope === 'CROSS') {
+      const rawDivisionIds =
+        dto.participatingDivisionIds && dto.participatingDivisionIds.length > 0
+          ? dto.participatingDivisionIds
+          : [request.fromDivisionId, request.toDivisionId]
+      // Pastikan toDivisionId (divisi penanggung jawab/tujuan) selalu terdaftar dan unik
+      const divisionIds = Array.from(new Set([...rawDivisionIds, request.toDivisionId]))
+      await this.db.insert(epicDivisionsTable).values(
+        divisionIds.map((divId) => ({
+          epicId: epic.id,
+          divisionId: divId,
+        })),
+      )
+    }
+
+    let createdStory: typeof storiesTable.$inferSelect | null = null
+
+    // Buat Story deliverable awal jika diminta
+    if (dto.createInitialStory !== false) {
+      const storyId = randomUUID()
+      const [story] = await this.db
+        .insert(storiesTable)
+        .values({
+          id: storyId,
+          divisionId: request.toDivisionId,
+          epicId: epic.id,
+          title: `Deliverable: ${epicTitle}`,
+          doneCriteria: 'Penyelesaian deliverable sesuai brief permohonan',
+          targetDate: dto.targetDate ? new Date(dto.targetDate) : request.deadline,
+          prokerTag: dto.prokerTag ?? null,
+          sourceRequestId: request.id,
+        })
+        .returning()
+
+      if (story) {
+        createdStory = story
+        // Auto-create initial task in Kanban
+        await this.db.insert(tasksTable).values({
+          id: randomUUID(),
+          storyId: story.id,
+          title: `Pengerjaan: ${epicTitle}`,
+          description: `Task pengerjaan otomatis dari Inisiatif: ${epicTitle}`,
+          status: 'TODO',
+          priority: 'MEDIUM',
+          position: '0',
+        })
+      }
+    }
+
+    const [updatedRequest] = await this.db
+      .update(requestsTable)
+      .set({
+        linkedEpicId: epic.id,
+        linkedStoryId: createdStory ? createdStory.id : null,
+        status: 'IN_PROGRESS',
+        updatedAt: new Date(),
+      })
+      .where(eq(requestsTable.id, id))
+      .returning()
+
+    await this.db.insert(requestEventsTable).values({
+      id: randomUUID(),
+      requestId: id,
+      fromStatus: 'ACCEPTED',
+      toStatus: 'IN_PROGRESS',
+      actorId: user.userId,
+      note: `Dikonversi menjadi Inisiatif / Epic: ${epic.title} di /epics.`,
+    })
+
+    await this.activityLogsService.record({
+      entityType: 'REQUEST',
+      entityId: id,
+      action: 'CONVERTED_TO_EPIC',
+      actorId: user.userId,
+      before: { status: 'ACCEPTED' },
+      after: {
+        status: 'IN_PROGRESS',
+        linkedEpicId: epic.id,
+        linkedStoryId: createdStory ? createdStory.id : null,
+      },
+    })
+
+    return { request: updatedRequest, epic, story: createdStory }
   }
 
   /**

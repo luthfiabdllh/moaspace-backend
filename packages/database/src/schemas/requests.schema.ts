@@ -3,6 +3,7 @@ import { divisionsTable } from './divisions.schema'
 import { usersTable } from './users.schema'
 import { storiesTable } from './stories.schema'
 import { tasksTable } from './tasks.schema'
+import { epicsTable } from './epics.schema'
 
 export const requestStatusEnum = pgEnum('request_status', [
   'DRAFT',
@@ -68,6 +69,9 @@ export const requestsTable = pgTable('requests', {
   deliveryNotes: text('delivery_notes'),
   deliveryAttachments: jsonb('delivery_attachments').$type<DeliveryAttachment[]>(),
   linkedStoryId: text('linked_story_id').references(() => storiesTable.id, {
+    onDelete: 'set null',
+  }),
+  linkedEpicId: text('linked_epic_id').references(() => epicsTable.id, {
     onDelete: 'set null',
   }),
   sourceTaskId: text('source_task_id').references(() => tasksTable.id, {

@@ -27,6 +27,7 @@ import { OriginApprovalDto } from './dto/origin-approval.dto.js'
 import { TriageRequestDto } from './dto/triage-request.dto.js'
 import { RespondInfoDto } from './dto/respond-info.dto.js'
 import { ConvertToStoryDto } from './dto/convert-to-story.dto.js'
+import { ConvertToEpicDto } from './dto/convert-to-epic.dto.js'
 import { DeliverRequestDto } from './dto/deliver-request.dto.js'
 import { ConfirmRequestDto } from './dto/confirm-request.dto.js'
 
@@ -136,6 +137,22 @@ export class RequestsController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.requestsService.convertToStory(id, dto, user)
+  }
+
+  @Post(':id/convert-to-epic')
+  @ApiOperation({
+    summary:
+      'Konversi permohonan yang disetujui menjadi Inisiatif / Epic (Level 1) di /epics',
+  })
+  @ApiResponse({ status: 201, description: 'Epic berhasil dibuat dan ditautkan ke request' })
+  @ApiResponse({ status: 400, description: 'Status bukan ACCEPTED' })
+  @ApiResponse({ status: 403, description: 'Bukan koordinator divisi tujuan' })
+  async convertToEpic(
+    @Param('id') id: string,
+    @Body() dto: ConvertToEpicDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.requestsService.convertToEpic(id, dto, user)
   }
 
   @Patch(':id/deliver')

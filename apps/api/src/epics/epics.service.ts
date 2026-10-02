@@ -11,6 +11,7 @@ import {
   divisionsTable,
   epicDivisionsTable,
   epicsTable,
+  requestsTable,
   storiesTable,
   tasksTable,
   usersTable,
@@ -68,11 +69,14 @@ export class EpicsService {
         ownerDivisionName: divisionsTable.name,
         createdById: epicsTable.createdById,
         creatorName: usersTable.name,
+        sourceRequestId: epicsTable.sourceRequestId,
+        requestTitle: requestsTable.title,
         closedAt: epicsTable.closedAt,
         createdAt: epicsTable.createdAt,
       })
       .from(epicsTable)
       .leftJoin(divisionsTable, eq(epicsTable.ownerDivisionId, divisionsTable.id))
+      .leftJoin(requestsTable, eq(epicsTable.sourceRequestId, requestsTable.id))
       .innerJoin(usersTable, eq(epicsTable.createdById, usersTable.id))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(epicsTable.createdAt))
@@ -179,12 +183,15 @@ export class EpicsService {
         createdById: epicsTable.createdById,
         creatorName: usersTable.name,
         creatorEmail: usersTable.email,
+        sourceRequestId: epicsTable.sourceRequestId,
+        requestTitle: requestsTable.title,
         closedAt: epicsTable.closedAt,
         createdAt: epicsTable.createdAt,
         updatedAt: epicsTable.updatedAt,
       })
       .from(epicsTable)
       .leftJoin(divisionsTable, eq(epicsTable.ownerDivisionId, divisionsTable.id))
+      .leftJoin(requestsTable, eq(epicsTable.sourceRequestId, requestsTable.id))
       .innerJoin(usersTable, eq(epicsTable.createdById, usersTable.id))
       .where(eq(epicsTable.id, id))
 
