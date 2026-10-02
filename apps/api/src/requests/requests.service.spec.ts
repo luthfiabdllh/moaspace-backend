@@ -363,4 +363,109 @@ describe('RequestsService', () => {
       ).rejects.toThrow(BadRequestException)
     })
   })
+
+  describe('draft lifecycle', () => {
+    it('creates request with status DRAFT when isDraft is true', async () => {
+      // Mock assertMember -> return membership
+      db.select.mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockResolvedValueOnce([{ id: 'mem-1' }]),
+        }),
+      })
+
+      // Mock fromDivision lookup
+      db.select.mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockResolvedValueOnce([
+            { id: 'div-1', name: 'Sponsorship', requestApprovalEnabled: true },
+          ]),
+        }),
+      })
+
+      // Mock toDivision lookup
+      db.select.mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockResolvedValueOnce([
+            { id: 'div-2', name: 'Media Kreatif' },
+          ]),
+        }),
+      })
+
+      // Mock insert request
+      const createdDraft = {
+        id: 'req-draft-1',
+        fromDivisionId: 'div-1',
+        toDivisionId: 'div-2',
+        title: 'Draft Poster',
+        status: 'DRAFT',
+      }
+      db.insert.mockReturnValueOnce({
+        values: vi.fn().mockReturnValueOnce({
+          returning: vi.fn().mockResolvedValueOnce([createdDraft]),
+        }),
+      })
+
+      // Mock insert event
+      db.insert.mockReturnValueOnce({
+        values: vi.fn().mockResolvedValueOnce([{ id: 'ev-1' }]),
+      })
+
+      const result = await service.createRequest(
+        {
+          fromDivisionId: 'div-1',
+          toDivisionId: 'div-2',
+          title: 'Draft Poster',
+          brief: { note: 'draft' },
+          isDraft: true,
+        },
+        mockUser,
+      )
+
+      expect(result.status).toBe('DRAFT')
+    })
+
+    it('submits a draft request and transitions to SUBMITTED or WAITING_ORIGIN_APPROVAL', async () => {
+      // Mock 1: getRequestOrThrow
+      db.select.mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockResolvedValueOnce([
+            {
+              id: 'req-draft-1',
+              fromDivisionId: 'div-1',
+              requesterId: mockUser.userId,
+              status: 'DRAFT',
+            },
+          ]),
+        }),
+      })
+
+      // Mock 2: fromDivision lookup
+      db.select.mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockResolvedValueOnce([
+            { requestApprovalEnabled: false },
+          ]),
+        }),
+      })
+
+      // Mock update
+      db.update.mockReturnValueOnce({
+        set: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            returning: vi.fn().mockResolvedValueOnce([
+              { id: 'req-draft-1', status: 'SUBMITTED' },
+            ]),
+          }),
+        }),
+      })
+
+      // Mock insert event
+      db.insert.mockReturnValueOnce({
+        values: vi.fn().mockResolvedValueOnce([{ id: 'ev-sub' }]),
+      })
+
+      const res = await service.submitDraft('req-draft-1', mockUser)
+      expect(res.status).toBe('SUBMITTED')
+    })
+  })
 })

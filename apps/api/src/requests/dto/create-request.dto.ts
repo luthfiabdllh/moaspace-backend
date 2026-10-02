@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import {
+  IsBoolean,
   IsDateString,
   IsNotEmpty,
   IsObject,
@@ -57,4 +58,12 @@ export class CreateRequestDto {
   @IsOptional()
   @IsString()
   sourceStoryId?: string
+
+  @ApiPropertyOptional({
+    description: 'Simpan sebagai draft tanpa langsung diajukan',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  isDraft?: boolean
 }

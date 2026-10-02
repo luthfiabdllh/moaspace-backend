@@ -23,6 +23,7 @@ import type { RequestUser } from '../common/decorators/current-user.decorator.js
 import type { CreateRequestTemplateDto } from './dto/create-template.dto.js'
 import type { UpdateRequestTemplateDto } from './dto/update-template.dto.js'
 import type { CreateRequestDto } from './dto/create-request.dto.js'
+import type { UpdateRequestDto } from './dto/update-request.dto.js'
 import type { OriginApprovalDto } from './dto/origin-approval.dto.js'
 import type { TriageRequestDto } from './dto/triage-request.dto.js'
 import type { RespondInfoDto } from './dto/respond-info.dto.js'
@@ -196,10 +197,12 @@ export class RequestsService {
       throw new NotFoundException('Divisi tujuan tidak ditemukan.')
     }
 
-    // Tentukan status awal berdasarkan flag requestApprovalEnabled
-    const initialStatus = fromDivision.requestApprovalEnabled
-      ? 'WAITING_ORIGIN_APPROVAL'
-      : 'SUBMITTED'
+    // Tentukan status awal berdasarkan flag isDraft dan requestApprovalEnabled
+    const initialStatus = dto.isDraft
+      ? 'DRAFT'
+      : fromDivision.requestApprovalEnabled
+        ? 'WAITING_ORIGIN_APPROVAL'
+        : 'SUBMITTED'
 
     const id = randomUUID()
     const [request] = await this.db
@@ -220,15 +223,19 @@ export class RequestsService {
       .returning()
 
     // Catat event awal
+    const initialNote = dto.isDraft
+      ? 'Permohonan disimpan sebagai draft oleh pemohon.'
+      : fromDivision.requestApprovalEnabled
+        ? 'Permohonan diajukan, menunggu persetujuan koordinator divisi asal.'
+        : 'Permohonan berhasil diajukan langsung ke divisi tujuan.'
+
     await this.db.insert(requestEventsTable).values({
       id: randomUUID(),
       requestId: id,
       fromStatus: null,
       toStatus: initialStatus,
       actorId: user.userId,
-      note: fromDivision.requestApprovalEnabled
-        ? 'Permohonan diajukan, menunggu persetujuan koordinator divisi asal.'
-        : 'Permohonan berhasil diajukan langsung ke divisi tujuan.',
+      note: initialNote,
     })
 
     await this.activityLogsService.record({
@@ -469,6 +476,10 @@ export class RequestsService {
       isSuper || (await this.isDivisionCoordinator(request.toDivisionId, user.userId))
 
     const permissions = {
+      canSubmitDraft:
+        (isRequester || isFromCoordinator) && request.status === 'DRAFT',
+      canEditDraft:
+        (isRequester || isFromCoordinator) && request.status === 'DRAFT',
       canApproveOrigin:
         isFromCoordinator && request.status === 'WAITING_ORIGIN_APPROVAL',
       canTriage: isToCoordinator && request.status === 'SUBMITTED',
@@ -886,6 +897,129 @@ export class RequestsService {
       actorId: user.userId,
       before: { status: 'DELIVERED' },
       after: { status: newStatus, reason: dto.reason },
+    })
+
+    return updated
+  }
+
+  /**
+   * Update draft permohonan (judul, brief, deadline, template)
+   */
+  async updateRequest(id: string, dto: UpdateRequestDto, user: RequestUser) {
+    const request = await this.getRequestOrThrow(id)
+
+    if (request.status !== 'DRAFT') {
+      throw new BadRequestException(
+        `Hanya permohonan berstatus DRAFT yang dapat diedit (status saat ini: ${request.status}).`,
+      )
+    }
+
+    const isRequester = request.requesterId === user.userId
+    let isFromCoordinator = user.isSuperAdmin || user.isKormanit
+    if (!isRequester && !isFromCoordinator) {
+      isFromCoordinator = await this.isDivisionCoordinator(request.fromDivisionId, user.userId)
+      if (!isFromCoordinator) {
+        throw new ForbiddenException(
+          'Hanya pemohon atau koordinator divisi asal yang dapat mengedit draft ini.',
+        )
+      }
+    }
+
+    const [updated] = await this.db
+      .update(requestsTable)
+      .set({
+        title: dto.title ?? request.title,
+        brief: dto.brief ? dto.brief : request.brief,
+        deadline:
+          dto.deadline !== undefined
+            ? dto.deadline
+              ? new Date(dto.deadline)
+              : null
+            : request.deadline,
+        templateId:
+          dto.templateId !== undefined
+            ? dto.templateId || null
+            : request.templateId,
+        updatedAt: new Date(),
+      })
+      .where(eq(requestsTable.id, id))
+      .returning()
+
+    await this.activityLogsService.record({
+      entityType: 'REQUEST',
+      entityId: id,
+      action: 'REQUEST_UPDATED',
+      actorId: user.userId,
+      before: { title: request.title, brief: request.brief },
+      after: { title: updated.title, brief: updated.brief },
+    })
+
+    return updated
+  }
+
+  /**
+   * Submit draft permohonan resmi ke alur approval atau triage
+   */
+  async submitDraft(id: string, user: RequestUser) {
+    const request = await this.getRequestOrThrow(id)
+
+    if (request.status !== 'DRAFT') {
+      throw new BadRequestException(
+        `Hanya permohonan berstatus DRAFT yang dapat diajukan (status saat ini: ${request.status}).`,
+      )
+    }
+
+    const isRequester = request.requesterId === user.userId
+    let isFromCoordinator = user.isSuperAdmin || user.isKormanit
+    if (!isRequester && !isFromCoordinator) {
+      isFromCoordinator = await this.isDivisionCoordinator(request.fromDivisionId, user.userId)
+      if (!isFromCoordinator) {
+        throw new ForbiddenException(
+          'Hanya pemohon atau koordinator divisi asal yang dapat mengajukan draft ini.',
+        )
+      }
+    }
+
+    const [fromDivision] = await this.db
+      .select({
+        requestApprovalEnabled: divisionsTable.requestApprovalEnabled,
+      })
+      .from(divisionsTable)
+      .where(eq(divisionsTable.id, request.fromDivisionId))
+
+    const newStatus = fromDivision?.requestApprovalEnabled
+      ? 'WAITING_ORIGIN_APPROVAL'
+      : 'SUBMITTED'
+
+    const [updated] = await this.db
+      .update(requestsTable)
+      .set({
+        status: newStatus,
+        updatedAt: new Date(),
+      })
+      .where(eq(requestsTable.id, id))
+      .returning()
+
+    const note = fromDivision?.requestApprovalEnabled
+      ? 'Draft permohonan resmi diajukan, menunggu persetujuan koordinator divisi asal.'
+      : 'Draft permohonan resmi diajukan langsung ke divisi tujuan.'
+
+    await this.db.insert(requestEventsTable).values({
+      id: randomUUID(),
+      requestId: id,
+      fromStatus: 'DRAFT',
+      toStatus: newStatus,
+      actorId: user.userId,
+      note,
+    })
+
+    await this.activityLogsService.record({
+      entityType: 'REQUEST',
+      entityId: id,
+      action: 'REQUEST_SUBMITTED',
+      actorId: user.userId,
+      before: { status: 'DRAFT' },
+      after: { status: newStatus },
     })
 
     return updated

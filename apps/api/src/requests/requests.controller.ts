@@ -21,6 +21,7 @@ import {
 } from '../common/decorators/current-user.decorator.js'
 import { RequestsService } from './requests.service.js'
 import { CreateRequestDto } from './dto/create-request.dto.js'
+import { UpdateRequestDto } from './dto/update-request.dto.js'
 import { QueryRequestsDto } from './dto/query-requests.dto.js'
 import { OriginApprovalDto } from './dto/origin-approval.dto.js'
 import { TriageRequestDto } from './dto/triage-request.dto.js'
@@ -166,5 +167,34 @@ export class RequestsController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.requestsService.confirm(id, dto, user)
+  }
+
+  @Patch(':id/submit-draft')
+  @ApiOperation({
+    summary: 'Ajukan permohonan yang masih berstatus DRAFT ke alur persetujuan atau triage',
+  })
+  @ApiResponse({ status: 200, description: 'Draft permohonan berhasil diajukan' })
+  @ApiResponse({ status: 400, description: 'Permohonan bukan berstatus DRAFT' })
+  @ApiResponse({ status: 403, description: 'Bukan pemohon atau koordinator divisi asal' })
+  async submitDraft(
+    @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.requestsService.submitDraft(id, user)
+  }
+
+  @Patch(':id')
+  @ApiOperation({
+    summary: 'Perbarui permohonan yang masih berstatus DRAFT (judul, brief, deadline, template)',
+  })
+  @ApiResponse({ status: 200, description: 'Draft permohonan berhasil diperbarui' })
+  @ApiResponse({ status: 400, description: 'Permohonan bukan berstatus DRAFT' })
+  @ApiResponse({ status: 403, description: 'Bukan pemohon atau koordinator divisi asal' })
+  async updateDraft(
+    @Param('id') id: string,
+    @Body() dto: UpdateRequestDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.requestsService.updateRequest(id, dto, user)
   }
 }
