@@ -722,6 +722,18 @@ export class RequestsService {
       throw new BadRequestException('Gagal membuat story untuk permohonan ini.')
     }
 
+    if (dto.createInitialTask) {
+      await this.db.insert(tasksTable).values({
+        id: randomUUID(),
+        storyId: story.id,
+        title: storyTitle,
+        description: `Task pengerjaan otomatis untuk permohonan: ${request.title}`,
+        status: 'TODO',
+        priority: 'MEDIUM',
+        position: '0',
+      })
+    }
+
     const [updatedRequest] = await this.db
       .update(requestsTable)
       .set({

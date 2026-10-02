@@ -40,4 +40,11 @@ export class ConvertToStoryDto {
   @IsOptional()
   @IsString()
   prokerTag?: string
+
+  @ApiPropertyOptional({
+    description: 'Buat task awal otomatis di papan Kanban (default: true)',
+    example: true,
+  })
+  @IsOptional()
+  createInitialTask?: boolean
 }

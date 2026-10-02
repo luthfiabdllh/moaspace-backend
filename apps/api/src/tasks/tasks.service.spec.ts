@@ -232,7 +232,9 @@ describe('TasksService', () => {
             innerJoin: vi.fn().mockReturnValue({
               leftJoin: vi.fn().mockReturnValue({
                 leftJoin: vi.fn().mockReturnValue({
-                  where: vi.fn().mockResolvedValue([]),
+                  leftJoin: vi.fn().mockReturnValue({
+                    where: vi.fn().mockResolvedValue([]),
+                  }),
                 }),
               }),
             }),

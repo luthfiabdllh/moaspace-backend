@@ -13,6 +13,7 @@ import {
   divisionMembersTable,
   divisionsTable,
   epicsTable,
+  requestsTable,
   storiesTable,
   tasksTable,
   taskSpLogsTable,
@@ -81,6 +82,8 @@ export class TasksService {
         storyTitle: storiesTable.title,
         epicId: storiesTable.epicId,
         epicTitle: epicsTable.title,
+        sourceRequestId: storiesTable.sourceRequestId,
+        requestTitle: requestsTable.title,
         divisionId: storiesTable.divisionId,
         divisionName: divisionsTable.name,
         title: tasksTable.title,
@@ -106,6 +109,7 @@ export class TasksService {
       .innerJoin(storiesTable, eq(tasksTable.storyId, storiesTable.id))
       .innerJoin(divisionsTable, eq(storiesTable.divisionId, divisionsTable.id))
       .leftJoin(epicsTable, eq(storiesTable.epicId, epicsTable.id))
+      .leftJoin(requestsTable, eq(storiesTable.sourceRequestId, requestsTable.id))
       .leftJoin(usersTable, eq(tasksTable.assigneeId, usersTable.id))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(asc(tasksTable.position), desc(tasksTable.createdAt))
@@ -120,6 +124,8 @@ export class TasksService {
         storyTitle: storiesTable.title,
         epicId: storiesTable.epicId,
         epicTitle: epicsTable.title,
+        sourceRequestId: storiesTable.sourceRequestId,
+        requestTitle: requestsTable.title,
         divisionId: storiesTable.divisionId,
         divisionName: divisionsTable.name,
         title: tasksTable.title,
@@ -145,6 +151,7 @@ export class TasksService {
       .innerJoin(storiesTable, eq(tasksTable.storyId, storiesTable.id))
       .innerJoin(divisionsTable, eq(storiesTable.divisionId, divisionsTable.id))
       .leftJoin(epicsTable, eq(storiesTable.epicId, epicsTable.id))
+      .leftJoin(requestsTable, eq(storiesTable.sourceRequestId, requestsTable.id))
       .leftJoin(usersTable, eq(tasksTable.assigneeId, usersTable.id))
       .where(eq(tasksTable.id, id))
 
@@ -934,6 +941,8 @@ export class TasksService {
         storyTitle: storiesTable.title,
         epicId: storiesTable.epicId,
         epicTitle: epicsTable.title,
+        sourceRequestId: storiesTable.sourceRequestId,
+        requestTitle: requestsTable.title,
         divisionId: storiesTable.divisionId,
         divisionName: divisionsTable.name,
         title: tasksTable.title,
@@ -959,6 +968,7 @@ export class TasksService {
       .innerJoin(storiesTable, eq(tasksTable.storyId, storiesTable.id))
       .innerJoin(divisionsTable, eq(storiesTable.divisionId, divisionsTable.id))
       .leftJoin(epicsTable, eq(storiesTable.epicId, epicsTable.id))
+      .leftJoin(requestsTable, eq(storiesTable.sourceRequestId, requestsTable.id))
       .leftJoin(usersTable, eq(tasksTable.assigneeId, usersTable.id))
       .where(and(...conditions))
       .orderBy(asc(tasksTable.position), desc(tasksTable.createdAt))
@@ -981,6 +991,8 @@ export class TasksService {
         storyTitle: storiesTable.title,
         epicId: storiesTable.epicId,
         epicTitle: epicsTable.title,
+        sourceRequestId: storiesTable.sourceRequestId,
+        requestTitle: requestsTable.title,
         divisionId: storiesTable.divisionId,
         divisionName: divisionsTable.name,
         title: tasksTable.title,
@@ -1006,6 +1018,7 @@ export class TasksService {
       .innerJoin(storiesTable, eq(tasksTable.storyId, storiesTable.id))
       .innerJoin(divisionsTable, eq(storiesTable.divisionId, divisionsTable.id))
       .leftJoin(epicsTable, eq(storiesTable.epicId, epicsTable.id))
+      .leftJoin(requestsTable, eq(storiesTable.sourceRequestId, requestsTable.id))
       .leftJoin(usersTable, eq(tasksTable.assigneeId, usersTable.id))
       .where(eq(tasksTable.assigneeId, user.userId))
       .orderBy(asc(tasksTable.position), desc(tasksTable.createdAt))
