@@ -13,6 +13,16 @@ export class UpdateRequestDto {
   @IsString()
   templateId?: string
 
+  @ApiPropertyOptional({ description: 'ID divisi asal pemohon' })
+  @IsOptional()
+  @IsString()
+  fromDivisionId?: string
+
+  @ApiPropertyOptional({ description: 'ID divisi tujuan permohonan' })
+  @IsOptional()
+  @IsString()
+  toDivisionId?: string
+
   @ApiPropertyOptional({
     description: 'Judul permohonan request',
     maxLength: 255,

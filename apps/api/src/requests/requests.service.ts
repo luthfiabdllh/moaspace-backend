@@ -1133,6 +1133,8 @@ export class RequestsService {
       .update(requestsTable)
       .set({
         title: dto.title ?? request.title,
+        fromDivisionId: dto.fromDivisionId ?? request.fromDivisionId,
+        toDivisionId: dto.toDivisionId ?? request.toDivisionId,
         brief: dto.brief ? dto.brief : request.brief,
         deadline:
           dto.deadline !== undefined
