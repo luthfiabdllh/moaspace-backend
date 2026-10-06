@@ -19,6 +19,8 @@
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1146.0",
+    "@aws-sdk/s3-request-presigner": "^3.1146.0",
     "@moaspace/database": "^1.0.0",
     "@nestjs/common": "^11.1.17",
     "@nestjs/config": "4.0.2",

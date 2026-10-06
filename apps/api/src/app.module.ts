@@ -16,12 +16,13 @@ import { StoriesModule } from './stories/stories.module.js'
 import { TasksModule } from './tasks/tasks.module.js'
 import { CapacityModule } from './capacity/capacity.module.js'
 import { RequestsModule } from './requests/requests.module.js'
+import { UploadsModule } from './uploads/uploads.module.js'
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env', '../../.env'],
+      envFilePath: ['.env', '../.env', '../../.env'],
     }),
     ScheduleModule.forRoot(),
     DatabaseModule,
@@ -34,6 +35,7 @@ import { RequestsModule } from './requests/requests.module.js'
     TasksModule,
     CapacityModule,
     RequestsModule,
+    UploadsModule,
   ],
   controllers: [AppController],
   providers: [
