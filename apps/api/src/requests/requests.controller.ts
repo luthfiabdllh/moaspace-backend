@@ -186,6 +186,21 @@ export class RequestsController {
     return this.requestsService.confirm(id, dto, user)
   }
 
+  @Patch(':id/start-revision')
+  @ApiOperation({
+    summary:
+      'Koordinator divisi tujuan memulai pengerjaan ulang atas revisi yang diminta (REVISION -> IN_PROGRESS)',
+  })
+  @ApiResponse({ status: 200, description: 'Status permohonan berhasil diperbarui ke IN_PROGRESS' })
+  @ApiResponse({ status: 400, description: 'Permohonan bukan berstatus REVISION' })
+  @ApiResponse({ status: 403, description: 'Bukan koordinator divisi tujuan' })
+  async startRevision(
+    @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.requestsService.startRevision(id, user)
+  }
+
   @Patch(':id/submit-draft')
   @ApiOperation({
     summary: 'Ajukan permohonan yang masih berstatus DRAFT ke alur persetujuan atau triage',

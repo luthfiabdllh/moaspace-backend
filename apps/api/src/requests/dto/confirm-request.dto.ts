@@ -12,7 +12,9 @@ export class ConfirmRequestDto {
   action: 'CONFIRM' | 'REVISION'
 
   @ApiPropertyOptional({
-    description: 'Catatan atau alasan jika mengajukan REVISION (wajib jika action REVISION)',
+    description:
+      'Catatan atau alasan jika mengajukan REVISION (wajib jika action REVISION). ' +
+      'Berupa HTML rich-text dari editor TipTap, boleh menyertakan gambar.',
   })
   @IsOptional()
   @IsString()

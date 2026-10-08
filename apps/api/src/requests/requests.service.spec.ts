@@ -364,6 +364,136 @@ describe('RequestsService', () => {
     })
   })
 
+  describe('confirm', () => {
+    it('throws if REVISION action has no meaningful reason (empty HTML tag)', async () => {
+      db.select.mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockResolvedValueOnce([
+            {
+              id: 'req-1',
+              fromDivisionId: 'div-1',
+              requesterId: mockSuperUser.userId,
+              linkedStoryId: 'story-1',
+              status: 'DELIVERED',
+            },
+          ]),
+        }),
+      })
+
+      // isDivisionCoordinator lookup (fromDivisionId)
+      db.select.mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockResolvedValueOnce([]),
+        }),
+      })
+
+      await expect(
+        service.confirm(
+          'req-1',
+          { action: 'REVISION', reason: '<p></p>' },
+          mockSuperUser,
+        ),
+      ).rejects.toThrow(BadRequestException)
+    })
+
+    it('accepts REVISION with meaningful HTML reason and does not reset tasks', async () => {
+      db.select.mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockResolvedValueOnce([
+            {
+              id: 'req-1',
+              fromDivisionId: 'div-1',
+              requesterId: mockSuperUser.userId,
+              linkedStoryId: 'story-1',
+              status: 'DELIVERED',
+            },
+          ]),
+        }),
+      })
+
+      // isDivisionCoordinator lookup (fromDivisionId)
+      db.select.mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockResolvedValueOnce([]),
+        }),
+      })
+
+      db.update.mockReturnValueOnce({
+        set: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            returning: vi.fn().mockResolvedValueOnce([
+              { id: 'req-1', status: 'REVISION' },
+            ]),
+          }),
+        }),
+      })
+
+      db.insert.mockReturnValueOnce({
+        values: vi.fn().mockResolvedValueOnce([]),
+      })
+
+      const result = await service.confirm(
+        'req-1',
+        { action: 'REVISION', reason: '<p>Warna kurang kontras</p>' },
+        mockSuperUser,
+      )
+
+      expect(result?.status).toBe('REVISION')
+      // Hanya 1x update dipanggil (status request), task TIDAK direset otomatis.
+      expect(db.update).toHaveBeenCalledTimes(1)
+      expect(activityLogsService.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'REQUEST_REVISION' }),
+      )
+    })
+  })
+
+  describe('startRevision', () => {
+    it('throws if request is not in REVISION status', async () => {
+      db.select.mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockResolvedValueOnce([
+            { id: 'req-1', toDivisionId: 'div-2', status: 'DELIVERED' },
+          ]),
+        }),
+      })
+
+      await expect(
+        service.startRevision('req-1', mockSuperUser),
+      ).rejects.toThrow(BadRequestException)
+    })
+
+    it('moves request from REVISION to IN_PROGRESS and logs the event', async () => {
+      db.select.mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockResolvedValueOnce([
+            { id: 'req-1', toDivisionId: 'div-2', status: 'REVISION' },
+          ]),
+        }),
+      })
+
+      db.update.mockReturnValueOnce({
+        set: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            returning: vi.fn().mockResolvedValueOnce([
+              { id: 'req-1', status: 'IN_PROGRESS' },
+            ]),
+          }),
+        }),
+      })
+
+      db.insert.mockReturnValueOnce({
+        values: vi.fn().mockResolvedValueOnce([]),
+      })
+
+      const result = await service.startRevision('req-1', mockSuperUser)
+
+      expect(result?.status).toBe('IN_PROGRESS')
+      expect(activityLogsService.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'REQUEST_REVISION_STARTED' }),
+      )
+    })
+  })
+
   describe('draft lifecycle', () => {
     it('creates request with status DRAFT when isDraft is true', async () => {
       // Mock assertMember -> return membership

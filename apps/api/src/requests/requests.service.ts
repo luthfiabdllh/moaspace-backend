@@ -548,6 +548,7 @@ export class RequestsService {
       canDeliver: isToCoordinator && request.status === 'IN_PROGRESS',
       canConfirmOrRevise:
         (isRequester || isFromCoordinator) && request.status === 'DELIVERED',
+      canStartRevision: isToCoordinator && request.status === 'REVISION',
     }
 
     return {
@@ -1047,7 +1048,7 @@ export class RequestsService {
       )
     }
 
-    if (dto.action === 'REVISION' && !dto.reason) {
+    if (dto.action === 'REVISION' && !this.hasMeaningfulContent(dto.reason)) {
       throw new BadRequestException('Alasan atau catatan revisi wajib dicantumkan.')
     }
 
@@ -1071,16 +1072,9 @@ export class RequestsService {
         .where(eq(storiesTable.id, request.linkedStoryId))
     }
 
-    // Jika REVISION dan ada Story terkait, naikkan revision_count pada task terkait
-    if (dto.action === 'REVISION' && request.linkedStoryId) {
-      await this.db
-        .update(tasksTable)
-        .set({
-          status: 'IN_PROGRESS',
-          revisionCount: sql`${tasksTable.revisionCount} + 1`,
-        })
-        .where(eq(tasksTable.storyId, request.linkedStoryId))
-    }
+    // NOTE: Task pada Story terkait TIDAK direset otomatis saat REVISION.
+    // Koordinator divisi tujuan mengatur sendiri task mana yang perlu dibuka
+    // kembali lewat Kanban, lalu memicu "Mulai Revisi" (startRevision) saat siap.
 
     await this.db.insert(requestEventsTable).values({
       id: randomUUID(),
@@ -1101,6 +1095,56 @@ export class RequestsService {
       actorId: user.userId,
       before: { status: 'DELIVERED' },
       after: { status: newStatus, reason: dto.reason },
+    })
+
+    return updated
+  }
+
+  /**
+   * Koordinator divisi tujuan memulai pengerjaan ulang atas revisi yang
+   * diminta pemohon (REVISION -> IN_PROGRESS). Task pada Story terkait TIDAK
+   * dibuka ulang otomatis; itu diatur sendiri oleh koordinator lewat Kanban.
+   */
+  async startRevision(id: string, user: RequestUser) {
+    const request = await this.getRequestOrThrow(id)
+
+    if (request.status !== 'REVISION') {
+      throw new BadRequestException(
+        `Permohonan tidak dalam status REVISION (status saat ini: ${request.status}).`,
+      )
+    }
+
+    await this.assertCoordinator(
+      request.toDivisionId,
+      user,
+      'memulai pengerjaan ulang revisi request',
+    )
+
+    const [updated] = await this.db
+      .update(requestsTable)
+      .set({
+        status: 'IN_PROGRESS',
+        updatedAt: new Date(),
+      })
+      .where(eq(requestsTable.id, id))
+      .returning()
+
+    await this.db.insert(requestEventsTable).values({
+      id: randomUUID(),
+      requestId: id,
+      fromStatus: 'REVISION',
+      toStatus: 'IN_PROGRESS',
+      actorId: user.userId,
+      note: 'Koordinator divisi tujuan memulai pengerjaan ulang atas revisi yang diminta.',
+    })
+
+    await this.activityLogsService.record({
+      entityType: 'REQUEST',
+      entityId: id,
+      action: 'REQUEST_REVISION_STARTED',
+      actorId: user.userId,
+      before: { status: 'REVISION' },
+      after: { status: 'IN_PROGRESS' },
     })
 
     return updated
@@ -1308,6 +1352,23 @@ export class RequestsService {
         `Hanya Koordinator divisi atau administrator yang berhak untuk ${actionDesc}.`,
       )
     }
+  }
+
+  /**
+   * Memeriksa apakah konten rich-text (HTML TipTap) memiliki isi bermakna:
+   * ada teks atau gambar, bukan sekadar tag kosong seperti "<p></p>".
+   */
+  private hasMeaningfulContent(html?: string | null): boolean {
+    if (!html) {
+      return false
+    }
+
+    if (/<img[\s>]/i.test(html)) {
+      return true
+    }
+
+    const text = html.replace(/<[^>]*>/g, '').trim()
+    return text.length > 0
   }
 
   private async assertMember(
