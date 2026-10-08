@@ -18,6 +18,7 @@ const DEFAULT_DIVISIONS = [
   { name: 'Bendahara', slug: 'bendahara' },
   { name: 'PSDM', slug: 'psdm' },
   { name: 'Humas Publikasi', slug: 'humas-publikasi' },
+  { name: 'Koordinator Unit', slug: 'koordinator-unit'}
 ]
 
 async function seed() {
