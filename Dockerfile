@@ -2,6 +2,9 @@
 
 # ────────────────────────────────────────────
 # Stage 1: Install dependencies + build (npm workspaces + Turborepo)
+# This stage is tagged separately (:builder-latest) and used as-is by the
+# one-off `migrate` service — it must KEEP devDependencies (drizzle-kit)
+# available, so pruning must NOT happen here.
 # ────────────────────────────────────────────
 FROM node:22-alpine AS builder
 
@@ -30,11 +33,17 @@ COPY apps/api ./apps/api
 # Build @moaspace/database then @moaspace/api (turbo resolves the dependency order)
 RUN npx turbo run build --filter=@moaspace/api...
 
-# Drop devDependencies, keeping only what's needed to run the built output
+# ────────────────────────────────────────────
+# Stage 2: Prune devDependencies — SEPARATE from `builder` on purpose.
+# `docker build --target builder` must stop BEFORE this, or the `migrate`
+# service's drizzle-kit (a devDependency) would get stripped out too.
+# ────────────────────────────────────────────
+FROM builder AS pruned
+
 RUN npm prune --omit=dev
 
 # ────────────────────────────────────────────
-# Stage 2: Production runtime image
+# Stage 3: Production runtime image
 # ────────────────────────────────────────────
 FROM node:22-alpine AS runner
 
@@ -42,18 +51,18 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Hoisted, pruned (prod-only) node_modules from the builder stage
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
+# Hoisted, pruned (prod-only) node_modules from the `pruned` stage
+COPY --from=pruned /app/node_modules ./node_modules
+COPY --from=pruned /app/package.json ./package.json
 
 # @moaspace/database: compiled dist/ + package.json (resolved via the
 # node_modules/@moaspace/database workspace symlink, so the path must match)
-COPY --from=builder /app/packages/database/dist ./packages/database/dist
-COPY --from=builder /app/packages/database/package.json ./packages/database/package.json
+COPY --from=pruned /app/packages/database/dist ./packages/database/dist
+COPY --from=pruned /app/packages/database/package.json ./packages/database/package.json
 
 # @moaspace/api: compiled dist/ + package.json
-COPY --from=builder /app/apps/api/dist ./apps/api/dist
-COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
+COPY --from=pruned /app/apps/api/dist ./apps/api/dist
+COPY --from=pruned /app/apps/api/package.json ./apps/api/package.json
 
 EXPOSE 3000
 
