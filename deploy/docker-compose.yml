@@ -51,18 +51,30 @@ services:
 
   # Dijalankan sekali per deploy backend (lihat VPS_SETUP.md / workflow CD),
   # bukan service yang terus hidup — pakai `docker compose --profile migrate run --rm migrate`.
+  #
+  # Pakai versioned migration (drizzle-kit migrate, baca dari packages/database/drizzle/*.sql),
+  # BUKAN `db:push` — supaya perubahan skema punya riwayat yang jelas & tidak
+  # berisiko salah tebak (push bisa interpretasikan rename kolom sebagai drop+create).
   migrate:
     image: ghcr.io/luthfiabdllh/moaspace-backend:builder-latest
     container_name: moaspace-migrate
     profiles: ["migrate"]
     environment:
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/moaspace
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - ADMIN_NAME=${ADMIN_NAME}
     networks:
       - internal
     depends_on:
       postgres:
         condition: service_healthy
-    command: ["npm", "--workspace=@moaspace/database", "run", "db:push"]
+    # 1) Terapkan migration terbaru. 2) Pastikan akun Super Admin + 7 divisi
+    # default ada (idempotent: tidak menimpa password admin yang sudah ada,
+    # tidak duplikat divisi yang sudah ada). Tidak ada Kormanit/data contoh.
+    command: >
+      sh -c "npm --workspace=@moaspace/database run db:migrate &&
+             npm --workspace=@moaspace/database run db:seed:production"
 
   backend:
     image: ghcr.io/luthfiabdllh/moaspace-backend:latest

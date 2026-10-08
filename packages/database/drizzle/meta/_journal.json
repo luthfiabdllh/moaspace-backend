@@ -15,6 +15,13 @@
       "when": 1790913468906,
       "tag": "0001_equal_senator_kelly",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791475916056,
+      "tag": "0002_motionless_boomerang",
+      "breakpoints": true
     }
   ]
 }

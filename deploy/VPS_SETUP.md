@@ -55,6 +55,7 @@ Isi setiap nilai. Generate password/secret yang kuat:
 ```bash
 openssl rand -hex 24   # untuk POSTGRES_PASSWORD
 openssl rand -hex 32   # untuk JWT_SECRET
+openssl rand -base64 18   # untuk ADMIN_PASSWORD
 ```
 
 **Penting:** `JWT_SECRET` wajib sama persis untuk backend & frontend — tapi
@@ -66,6 +67,15 @@ langkah 5) harus pakai domain asli Anda dengan `https://`, contoh:
 ```
 ALLOWED_ORIGINS=https://app.moaspace.my.id
 ```
+
+**`ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME`** — akun Super Admin
+satu-satunya yang dibuat otomatis saat deploy pertama (lihat langkah 7).
+7 divisi default organisasi ikut dibuat (tanpa anggota), tapi **tidak ada**
+akun Kormanit atau data contoh (task/story/epic/request) apa pun — admin ini
+yang login pertama kali lalu mengatur anggota & penugasan dari UI.
+**Catat password ini di tempat aman** — script seednya idempotent, jadi
+deploy berikutnya TIDAK akan menimpa password yang sudah ada (termasuk
+kalau Anda menggantinya lewat halaman profil di aplikasi).
 
 ## 3. Sesuaikan domain di konfigurasi Nginx
 
@@ -156,6 +166,16 @@ pakai tab Variables bukan Secrets.)
    docker compose --profile migrate run --rm migrate
    docker compose up -d
    ```
+   Perintah `migrate` di atas menjalankan skema migration (`drizzle-kit
+   migrate`, dari `packages/database/drizzle/*.sql`) **lalu** membuat akun
+   Super Admin satu-satunya (dari `ADMIN_EMAIL`/`ADMIN_PASSWORD` di `.env`)
+   + 7 divisi default organisasi — tanpa Kormanit atau data contoh
+   (task/story/epic/request) apa pun, tinggal login dan atur anggota &
+   penugasan dari situ. Outputnya langsung tercetak di terminal saat
+   command berjalan (cari baris `✅ Super Admin created: ...` dan
+   `✅ Division created: ...`); kalau tidak melihat baris sukses tersebut
+   atau proses keluar dengan error, jangan lanjut ke langkah berikutnya.
+
    `docker compose up -d` (tanpa argumen) menjalankan `backend`, `frontend`,
    dan `nginx`. Nginx (image `jonasal/nginx-certbot`) otomatis menerbitkan
    sertifikat HTTPS untuk domain yang ada di `nginx/user_conf.d/*.conf` —
@@ -169,7 +189,8 @@ pakai tab Variables bukan Secrets.)
    docker compose logs -f backend
    docker compose logs -f frontend
    ```
-   Lalu buka `https://app.moaspace.my.id` di browser.
+   Lalu buka `https://app.moaspace.my.id` di browser dan login dengan
+   `ADMIN_EMAIL` / `ADMIN_PASSWORD` yang Anda isi di `.env` (langkah 2).
 
 Setelah ini, **setiap push/merge ke `main`** di masing-masing repo otomatis
 build image baru, push ke GHCR, dan restart service yang bersangkutan di

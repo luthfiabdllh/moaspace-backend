@@ -25,6 +25,7 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx scripts/seed.ts",
+    "db:seed:production": "tsx scripts/seed-production.ts",
     "db:local": "tsx scripts/local-db.ts"
   },
   "dependencies": {

@@ -33,6 +33,17 @@ jobs:
       - name: Build
         run: npx turbo build
 
+      - name: Check for un-generated schema migrations
+        run: |
+          npm --workspace=@moaspace/database run db:generate
+          # git status (bukan git diff) — migration baru adalah file BARU
+          # (untracked), bukan modifikasi file lama, jadi harus ditangkap juga.
+          if [ -n "$(git status --porcelain -- packages/database/drizzle)" ]; then
+            echo "::error::Schema di packages/database/src/schemas berubah tapi migration belum di-generate. Jalankan 'npm --workspace=@moaspace/database run db:generate' lokal dan commit file drizzle/*.sql yang dihasilkan."
+            git status --porcelain -- packages/database/drizzle
+            exit 1
+          fi
+
       - name: Unit tests
         run: npm --workspace=@moaspace/api test
 
