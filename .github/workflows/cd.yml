@@ -55,6 +55,14 @@ jobs:
         id: meta
         run: echo "sha_tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
+      # GHCR/Docker requires lowercase repository names, but the org name
+      # (KKN-Moa-Bercerita) has uppercase letters — github.repository
+      # preserves the exact case, so it must be lowercased before use in an
+      # image tag or the push step fails with "must be lowercase".
+      - name: Set lowercase image repository name
+        id: repo
+        run: echo "name=$(echo "$GITHUB_REPOSITORY" | tr "[:upper:]" "[:lower:]")" >> "$GITHUB_OUTPUT"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -74,21 +82,22 @@ jobs:
           target: runner
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.sha_tag }}
+            ghcr.io/${{ steps.repo.outputs.name }}:latest
+            ghcr.io/${{ steps.repo.outputs.name }}:${{ steps.meta.outputs.sha_tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       # Builder-stage image (still has devDependencies + drizzle-kit) — used
       # only by the one-off `migrate` service in docker-compose.yml to run
-      # schema migrations (`db:push`) before the new backend starts.
+      # versioned schema migrations (`db:migrate`) + production seed before
+      # the new backend starts.
       - name: Build & push migrator image
         uses: docker/build-push-action@v6
         with:
           context: .
           target: builder
           push: true
-          tags: ghcr.io/${{ github.repository }}:builder-latest
+          tags: ghcr.io/${{ steps.repo.outputs.name }}:builder-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

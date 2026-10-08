@@ -93,11 +93,18 @@ default. VPS perlu login sekali supaya bisa `docker compose pull`.
 
 1. Buat Personal Access Token di GitHub: **Settings → Developer settings →
    Personal access tokens → Tokens (classic)** → scope minimal
-   `read:packages`.
+   `read:packages`. Karena image-nya di-push ke bawah organisasi
+   `KKN-Moa-Bercerita` (bukan akun personal), akun yang membuat token ini
+   harus jadi anggota organisasi tersebut dengan akses ke package-nya —
+   cek di **github.com/orgs/KKN-Moa-Bercerita/packages** → package →
+   **Package settings** → pastikan akun Anda (atau tim Anda) punya akses
+   `Read` minimal.
 2. Di VPS:
    ```bash
    echo "GHP_TOKEN_ANDA" | docker login ghcr.io -u USERNAME_GITHUB_ANDA --password-stdin
    ```
+   (`USERNAME_GITHUB_ANDA` tetap username akun GitHub pribadi Anda yang
+   membuat token di langkah 1, bukan nama organisasi.)
 
 Token ini tersimpan di `~/.docker/config.json` VPS — tidak perlu diulang
 per-deploy, GitHub Actions nanti SSH masuk dan pakai sesi Docker yang sudah
