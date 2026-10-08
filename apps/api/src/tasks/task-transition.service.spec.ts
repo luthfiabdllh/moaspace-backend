@@ -189,8 +189,210 @@ describe('TaskTransitionService', () => {
     })
   })
 
+  describe('Coordinator backward moves (Transisi G)', () => {
+    it('allows coordinator to send TODO back to BACKLOG', () => {
+      const task: TaskTransitionInput = {
+        id: 'task-1',
+        status: 'TODO',
+        assigneeId: 'user-assignee',
+        divisionId: 'div-1',
+        revisionCount: 0,
+        startedAt: null,
+      }
+
+      const res = service.validateTransition(task, 'BACKLOG', coordinatorActor)
+      expect(res.status).toBe('BACKLOG')
+    })
+
+    it('allows coordinator to send IN_PROGRESS back to TODO', () => {
+      const task: TaskTransitionInput = {
+        id: 'task-1',
+        status: 'IN_PROGRESS',
+        assigneeId: 'user-assignee',
+        divisionId: 'div-1',
+        revisionCount: 0,
+        startedAt: new Date(),
+      }
+
+      const res = service.validateTransition(task, 'TODO', coordinatorActor)
+      expect(res.status).toBe('TODO')
+    })
+
+    it('allows coordinator to send IN_PROGRESS directly back to BACKLOG (previously unreachable)', () => {
+      const task: TaskTransitionInput = {
+        id: 'task-1',
+        status: 'IN_PROGRESS',
+        assigneeId: 'user-assignee',
+        divisionId: 'div-1',
+        revisionCount: 0,
+        startedAt: new Date(),
+      }
+
+      const res = service.validateTransition(task, 'BACKLOG', coordinatorActor)
+      expect(res.status).toBe('BACKLOG')
+    })
+
+    it('allows coordinator to send REVIEW directly back to TODO', () => {
+      const task: TaskTransitionInput = {
+        id: 'task-1',
+        status: 'REVIEW',
+        assigneeId: 'user-assignee',
+        divisionId: 'div-1',
+        revisionCount: 0,
+        startedAt: new Date(),
+      }
+
+      const res = service.validateTransition(task, 'TODO', coordinatorActor)
+      expect(res.status).toBe('TODO')
+    })
+
+    it('allows coordinator to send REVIEW directly back to BACKLOG', () => {
+      const task: TaskTransitionInput = {
+        id: 'task-1',
+        status: 'REVIEW',
+        assigneeId: 'user-assignee',
+        divisionId: 'div-1',
+        revisionCount: 0,
+        startedAt: new Date(),
+      }
+
+      const res = service.validateTransition(task, 'BACKLOG', coordinatorActor)
+      expect(res.status).toBe('BACKLOG')
+    })
+
+    it('still routes REVIEW -> IN_PROGRESS through the revision-specific rule (revisionCount increments)', () => {
+      const task: TaskTransitionInput = {
+        id: 'task-1',
+        status: 'REVIEW',
+        assigneeId: 'user-assignee',
+        divisionId: 'div-1',
+        revisionCount: 0,
+        startedAt: new Date(),
+      }
+
+      const res = service.validateTransition(task, 'IN_PROGRESS', coordinatorActor)
+      expect(res.status).toBe('IN_PROGRESS')
+      expect(res.revisionCount).toBe(1)
+    })
+
+    it('rejects a non-coordinator member from moving IN_PROGRESS back to BACKLOG', () => {
+      const task: TaskTransitionInput = {
+        id: 'task-1',
+        status: 'IN_PROGRESS',
+        assigneeId: 'user-assignee',
+        divisionId: 'div-1',
+        revisionCount: 0,
+        startedAt: new Date(),
+      }
+
+      expect(() =>
+        service.validateTransition(task, 'BACKLOG', assigneeActor),
+      ).toThrow(UnprocessableEntityException)
+    })
+  })
+
+  describe('Coordinator forward shortcuts (Transisi H)', () => {
+    it('allows coordinator to jump BACKLOG directly to IN_PROGRESS and sets startedAt/spLockedAt', () => {
+      const task: TaskTransitionInput = {
+        id: 'task-1',
+        status: 'BACKLOG',
+        assigneeId: 'user-assignee',
+        storyPoints: 5,
+        divisionId: 'div-1',
+        revisionCount: 0,
+        startedAt: null,
+      }
+
+      const res = service.validateTransition(task, 'IN_PROGRESS', coordinatorActor)
+      expect(res.status).toBe('IN_PROGRESS')
+      expect(res.startedAt).toBeDefined()
+      expect(res.spLockedAt).toBeDefined()
+    })
+
+    it('allows coordinator to jump BACKLOG directly to DONE and sets completedAt + startedAt', () => {
+      const task: TaskTransitionInput = {
+        id: 'task-1',
+        status: 'BACKLOG',
+        assigneeId: 'user-assignee',
+        storyPoints: 5,
+        divisionId: 'div-1',
+        revisionCount: 0,
+        startedAt: null,
+      }
+
+      const res = service.validateTransition(task, 'DONE', coordinatorActor)
+      expect(res.status).toBe('DONE')
+      expect(res.completedAt).toBeDefined()
+      expect(res.startedAt).toBeDefined()
+    })
+
+    it('allows coordinator to jump TODO directly to DONE', () => {
+      const task: TaskTransitionInput = {
+        id: 'task-1',
+        status: 'TODO',
+        assigneeId: 'user-assignee',
+        storyPoints: 3,
+        divisionId: 'div-1',
+        revisionCount: 0,
+        startedAt: null,
+      }
+
+      const res = service.validateTransition(task, 'DONE', coordinatorActor)
+      expect(res.status).toBe('DONE')
+      expect(res.completedAt).toBeDefined()
+    })
+
+    it('rejects jump into/past TODO when storyPoints is not set, even for coordinator', () => {
+      const task: TaskTransitionInput = {
+        id: 'task-1',
+        status: 'BACKLOG',
+        assigneeId: 'user-assignee',
+        storyPoints: null,
+        divisionId: 'div-1',
+        revisionCount: 0,
+        startedAt: null,
+      }
+
+      expect(() =>
+        service.validateTransition(task, 'IN_PROGRESS', coordinatorActor),
+      ).toThrow('Estimasi Story Point (skala 1, 2, 3, 5, 8) wajib diisi sebelum memindahkan task melewati To Do.')
+    })
+
+    it('rejects jump into/past TODO when assignee is not set, even for coordinator', () => {
+      const task: TaskTransitionInput = {
+        id: 'task-1',
+        status: 'BACKLOG',
+        assigneeId: null,
+        storyPoints: 5,
+        divisionId: 'div-1',
+        revisionCount: 0,
+        startedAt: null,
+      }
+
+      expect(() =>
+        service.validateTransition(task, 'REVIEW', coordinatorActor),
+      ).toThrow(UnprocessableEntityException)
+    })
+
+    it('rejects a non-coordinator member from jumping BACKLOG directly to IN_PROGRESS', () => {
+      const task: TaskTransitionInput = {
+        id: 'task-1',
+        status: 'BACKLOG',
+        assigneeId: 'user-assignee',
+        storyPoints: 5,
+        divisionId: 'div-1',
+        revisionCount: 0,
+        startedAt: null,
+      }
+
+      expect(() =>
+        service.validateTransition(task, 'IN_PROGRESS', assigneeActor),
+      ).toThrow(UnprocessableEntityException)
+    })
+  })
+
   describe('Illegal shortcut', () => {
-    it('rejects invalid jump from BACKLOG directly to DONE', () => {
+    it('rejects non-coordinator jump from BACKLOG directly to DONE', () => {
       const task: TaskTransitionInput = {
         id: 'task-1',
         status: 'BACKLOG',
@@ -201,7 +403,7 @@ describe('TaskTransitionService', () => {
       }
 
       expect(() =>
-        service.validateTransition(task, 'DONE', coordinatorActor),
+        service.validateTransition(task, 'DONE', assigneeActor),
       ).toThrow(UnprocessableEntityException)
     })
   })

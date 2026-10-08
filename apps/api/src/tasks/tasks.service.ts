@@ -352,6 +352,8 @@ export class TasksService {
         assigneeId: tasksTable.assigneeId,
         storyPoints: tasksTable.storyPoints,
         spLockedAt: tasksTable.spLockedAt,
+        revisionCount: tasksTable.revisionCount,
+        startedAt: tasksTable.startedAt,
       })
       .from(tasksTable)
       .innerJoin(storiesTable, eq(tasksTable.storyId, storiesTable.id))
@@ -421,22 +423,32 @@ export class TasksService {
       updates.storyPoints = dto.storyPoints
     }
 
-    // Overcapacity Check jika assignee berubah atau baru ditentukan
+    // Overcapacity Check: jika assignee berubah, ATAU task berpindah dari
+    // status tidak-aktif (BACKLOG/DONE) ke status aktif (TODO/IN_PROGRESS/
+    // REVIEW) yang menghitung ke beban kerja anggota (konsisten dengan move()).
     const targetStatus = dto.status ?? existing.status
     const effectiveSp = dto.storyPoints !== undefined ? dto.storyPoints : (existing.storyPoints ?? 0)
+    const effectiveAssigneeId = dto.assigneeId !== undefined ? dto.assigneeId : existing.assigneeId
+
+    const ACTIVE_CAPACITY_STATUSES = ['TODO', 'IN_PROGRESS', 'REVIEW']
+    const assigneeChanged =
+      dto.assigneeId !== undefined &&
+      dto.assigneeId !== null &&
+      dto.assigneeId !== existing.assigneeId
+    const wasActiveForCapacity = ACTIVE_CAPACITY_STATUSES.includes(existing.status)
+    const willBeActiveForCapacity = ACTIVE_CAPACITY_STATUSES.includes(targetStatus)
 
     let isOvercapacity = false
     let overcapacityUtilization = 0
 
     if (
-      dto.assigneeId !== undefined &&
-      dto.assigneeId !== null &&
-      dto.assigneeId !== existing.assigneeId &&
-      ['TODO', 'IN_PROGRESS', 'REVIEW'].includes(targetStatus) &&
+      effectiveAssigneeId &&
       effectiveSp &&
-      effectiveSp > 0
+      effectiveSp > 0 &&
+      willBeActiveForCapacity &&
+      (assigneeChanged || !wasActiveForCapacity)
     ) {
-      const utilization = await this.capacityService.getUserUtilization(dto.assigneeId)
+      const utilization = await this.capacityService.getUserUtilization(effectiveAssigneeId)
       const currentActiveSp = utilization.activeSp
       const capacitySp = utilization.capacitySp
       const projectedSp = currentActiveSp + effectiveSp
@@ -449,7 +461,7 @@ export class TasksService {
             error: 'OVERCAPACITY_WARNING',
             message: `Penugasan ini menyebabkan beban ${utilization.userName} mencapai ${projectedUtilization}% (melebihi kapasitas mingguan ${capacitySp} SP).`,
             data: {
-              assigneeId: dto.assigneeId,
+              assigneeId: effectiveAssigneeId,
               assigneeName: utilization.userName,
               currentActiveSp,
               taskSp: effectiveSp,
@@ -475,20 +487,34 @@ export class TasksService {
     if (dto.dueDate !== undefined)
       updates.dueDate = dto.dueDate ? new Date(dto.dueDate) : null
 
-    // Tangani perubahan status dan timestamp otomatis
+    // Tangani perubahan status: divalidasi lewat TaskTransitionService yang
+    // SAMA dipakai oleh move() (drag-and-drop Kanban), supaya tombol "Ubah
+    // Status Alur Kerja" di panel detail task tidak bisa melewati aturan role,
+    // urutan tahap, maupun syarat SP+Assignee yang berlaku di drag-and-drop.
     let isStatusChanged = false
     if (dto.status !== undefined && dto.status !== existing.status) {
       isStatusChanged = true
-      updates.status = dto.status
 
-      if (dto.status === 'DONE') {
-        updates.completedAt = new Date()
-      } else if (existing.status === 'BACKLOG' && (dto.status === 'TODO' || dto.status === 'IN_PROGRESS')) {
-        updates.startedAt = new Date()
-      }
-      if (dto.status === 'IN_PROGRESS' && !existing.spLockedAt) {
-        updates.spLockedAt = new Date()
-      }
+      const isAssignee = Boolean(existing.assigneeId && existing.assigneeId === user.userId)
+      const transition = this.taskTransitionService.validateTransition(
+        {
+          id: existing.id,
+          status: existing.status,
+          assigneeId: effectiveAssigneeId,
+          storyPoints: effectiveSp,
+          divisionId: existing.divisionId,
+          revisionCount: existing.revisionCount,
+          startedAt: existing.startedAt,
+        },
+        dto.status,
+        { userId: user.userId, isCoordinator, isAssignee },
+      )
+
+      updates.status = transition.status
+      if (transition.startedAt !== undefined) updates.startedAt = transition.startedAt
+      if (transition.completedAt !== undefined) updates.completedAt = transition.completedAt
+      if (transition.spLockedAt !== undefined) updates.spLockedAt = transition.spLockedAt
+      if (transition.revisionCount !== undefined) updates.revisionCount = transition.revisionCount
     }
 
     if (Object.keys(updates).length > 0) {
@@ -498,11 +524,11 @@ export class TasksService {
         .where(eq(tasksTable.id, id))
     }
 
-    if (isOvercapacity && dto.assigneeId) {
+    if (isOvercapacity && effectiveAssigneeId) {
       await this.db.insert(assignmentOverridesTable).values({
         id: crypto.randomUUID(),
         taskId: id,
-        assigneeId: dto.assigneeId,
+        assigneeId: effectiveAssigneeId,
         utilizationAtAssign: overcapacityUtilization,
         overriddenById: user.userId,
       })
@@ -684,10 +710,22 @@ export class TasksService {
       { userId: user.userId, isCoordinator, isAssignee },
     )
 
-    // Cek Overcapacity jika bergerak dari BACKLOG ke TODO (mengaktifkan beban kerja anggota)
+    // Cek Overcapacity jika task bergerak dari status TIDAK aktif (BACKLOG/DONE)
+    // ke status aktif (TODO/IN_PROGRESS/REVIEW) yang menghitung ke beban kerja
+    // anggota. Berlaku juga untuk lompatan tahap langsung oleh Koordinator
+    // (misal BACKLOG -> IN_PROGRESS), tidak hanya BACKLOG -> TODO.
+    const ACTIVE_CAPACITY_STATUSES = ['TODO', 'IN_PROGRESS', 'REVIEW']
+    const wasActiveForCapacity = ACTIVE_CAPACITY_STATUSES.includes(task.status)
+    const willBeActiveForCapacity = ACTIVE_CAPACITY_STATUSES.includes(dto.status)
+
     let isOvercapacity = false
     let overcapacityUtilization = 0
-    if (task.status === 'BACKLOG' && dto.status === 'TODO' && task.assigneeId && task.storyPoints) {
+    if (
+      !wasActiveForCapacity &&
+      willBeActiveForCapacity &&
+      task.assigneeId &&
+      task.storyPoints
+    ) {
       const utilization = await this.capacityService.getUserUtilization(task.assigneeId)
       const currentActiveSp = utilization.activeSp
       const capacitySp = utilization.capacitySp
@@ -699,7 +737,7 @@ export class TasksService {
           throw new ConflictException({
             statusCode: 409,
             error: 'OVERCAPACITY_WARNING',
-            message: `Memindahkan task ini ke To Do menyebabkan beban ${utilization.userName} mencapai ${projectedUtilization}% (melebihi kapasitas mingguan ${capacitySp} SP).`,
+            message: `Memindahkan task ini ke ${dto.status} menyebabkan beban ${utilization.userName} mencapai ${projectedUtilization}% (melebihi kapasitas mingguan ${capacitySp} SP).`,
             data: {
               assigneeId: task.assigneeId,
               assigneeName: utilization.userName,

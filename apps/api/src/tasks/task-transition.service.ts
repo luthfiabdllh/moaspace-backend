@@ -2,6 +2,10 @@ import { Injectable, UnprocessableEntityException } from '@nestjs/common'
 
 export type TaskStatus = 'BACKLOG' | 'TODO' | 'IN_PROGRESS' | 'REVIEW' | 'DONE'
 
+// Urutan tahapan Kanban dari awal ke akhir, dipakai untuk menentukan
+// "mundur" vs "maju" pada aturan transisi mundur Koordinator (Transisi G).
+const STAGE_ORDER: TaskStatus[] = ['BACKLOG', 'TODO', 'IN_PROGRESS', 'REVIEW', 'DONE']
+
 export interface TaskTransitionInput {
   id: string
   status: TaskStatus
@@ -36,7 +40,11 @@ export class TaskTransitionService {
    * 4. REVIEW -> DONE: Hanya oleh Koordinator (completedAt dicatat; auto-close Story)
    * 5. REVIEW -> IN_PROGRESS: Hanya oleh Koordinator (Revisi: revisionCount + 1)
    * 6. DONE -> status lain: Hanya oleh Koordinator (re-open)
-   * - Member biasa hanya boleh menggeser task miliknya dari TODO -> IN_PROGRESS atau IN_PROGRESS -> REVIEW.
+   * 7. Koordinator dapat melompati beberapa tahap sekaligus, maju maupun mundur
+   *    (misal BACKLOG -> IN_PROGRESS, atau REVIEW -> BACKLOG), dengan syarat &
+   *    efek samping tahap yang dilewati tetap diterapkan secara kumulatif.
+   * - Member biasa hanya boleh menggeser task miliknya satu langkah: TODO -> IN_PROGRESS
+   *   atau IN_PROGRESS -> REVIEW. Tidak bisa melompat tahap maupun mundur.
    * - Transisi tidak sah ditolak dengan HTTP 422 Unprocessable Entity.
    */
   validateTransition(
@@ -136,13 +144,50 @@ export class TaskTransitionService {
       }
     }
 
-    // Transisi G: Koordinator mengembalikan TODO ke BACKLOG atau IN_PROGRESS ke TODO
+    // Transisi G: Koordinator dapat mengembalikan task mundur ke tahapan
+    // sebelumnya manapun (BACKLOG/TODO/IN_PROGRESS/REVIEW -> tahapan yang
+    // lebih awal), tidak hanya satu langkah. Keluar dari DONE sudah ditangani
+    // Transisi F, dan REVIEW -> IN_PROGRESS (revisi) sudah ditangani Transisi E
+    // sehingga tidak akan jatuh ke sini.
     if (isCoordinator) {
-      if (task.status === 'TODO' && targetStatus === 'BACKLOG') {
-        return { status: 'BACKLOG' }
+      const currentIdx = STAGE_ORDER.indexOf(task.status)
+      const targetIdx = STAGE_ORDER.indexOf(targetStatus)
+      if (currentIdx !== -1 && targetIdx !== -1 && targetIdx < currentIdx) {
+        return { status: targetStatus }
       }
-      if (task.status === 'IN_PROGRESS' && targetStatus === 'TODO') {
-        return { status: 'TODO' }
+    }
+
+    // Transisi H: Koordinator dapat memindahkan task maju melompati beberapa
+    // tahap sekaligus (misal BACKLOG -> IN_PROGRESS atau BACKLOG -> DONE),
+    // tidak hanya satu langkah seperti Transisi A-D. Syarat & efek samping
+    // dari setiap tahap yang dilewati tetap diterapkan secara kumulatif, dan
+    // tidak mengubah hak akses Member biasa (tetap hanya satu langkah).
+    if (isCoordinator) {
+      const currentIdx = STAGE_ORDER.indexOf(task.status)
+      const targetIdx = STAGE_ORDER.indexOf(targetStatus)
+      if (currentIdx !== -1 && targetIdx !== -1 && targetIdx > currentIdx) {
+        if (targetIdx >= STAGE_ORDER.indexOf('TODO')) {
+          if (!task.storyPoints) {
+            throw new UnprocessableEntityException(
+              'Estimasi Story Point (skala 1, 2, 3, 5, 8) wajib diisi sebelum memindahkan task melewati To Do.',
+            )
+          }
+          if (!task.assigneeId) {
+            throw new UnprocessableEntityException(
+              'Assignee wajib ditentukan sebelum memindahkan task melewati To Do.',
+            )
+          }
+        }
+
+        const result: TaskTransitionResult = { status: targetStatus }
+        if (targetIdx >= STAGE_ORDER.indexOf('IN_PROGRESS')) {
+          result.startedAt = task.startedAt || new Date()
+          result.spLockedAt = new Date()
+        }
+        if (targetStatus === 'DONE') {
+          result.completedAt = new Date()
+        }
+        return result
       }
     }
 

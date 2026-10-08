@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TasksService } from './tasks.service.js'
@@ -221,6 +222,187 @@ describe('TasksService', () => {
           entityType: 'TASK',
         }),
       )
+    })
+  })
+
+  describe('update (status change goes through TaskTransitionService)', () => {
+    const member = {
+      userId: 'user-member',
+      email: 'member@moaspace.com',
+      isSuperAdmin: false,
+      isKormanit: false,
+    }
+
+    const coordinator = {
+      userId: 'user-coord',
+      email: 'coord@moaspace.com',
+      isSuperAdmin: false,
+      isKormanit: false,
+    }
+
+    it('rejects a plain member moving BACKLOG -> TODO via PATCH /tasks/:id (same rule as drag-and-drop)', async () => {
+      mockDb.select
+        // existing task lookup
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            innerJoin: vi.fn().mockReturnValue({
+              where: vi.fn().mockResolvedValue([
+                {
+                  id: 'task-1',
+                  storyId: 'story-1',
+                  divisionId: 'div-1',
+                  status: 'BACKLOG',
+                  title: 'Desain Banner',
+                  assigneeId: null,
+                  storyPoints: null,
+                  spLockedAt: null,
+                  revisionCount: 0,
+                  startedAt: null,
+                },
+              ]),
+            }),
+          }),
+        })
+        // membership lookup (plain MEMBER, not COORDINATOR)
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([{ role: 'MEMBER' }]),
+          }),
+        })
+
+      await expect(
+        service.update('task-1', { status: 'TODO' }, member),
+      ).rejects.toThrow(UnprocessableEntityException)
+    })
+
+    it('rejects moving BACKLOG -> TODO via update() when storyPoints is still empty, even for a coordinator (regression: previously bypassed validation entirely)', async () => {
+      mockDb.select
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            innerJoin: vi.fn().mockReturnValue({
+              where: vi.fn().mockResolvedValue([
+                {
+                  id: 'task-1',
+                  storyId: 'story-1',
+                  divisionId: 'div-1',
+                  status: 'BACKLOG',
+                  title: 'Desain Banner',
+                  assigneeId: 'user-member',
+                  storyPoints: null,
+                  spLockedAt: null,
+                  revisionCount: 0,
+                  startedAt: null,
+                },
+              ]),
+            }),
+          }),
+        })
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([{ role: 'COORDINATOR' }]),
+          }),
+        })
+
+      await expect(
+        service.update('task-1', { status: 'TODO' }, coordinator),
+      ).rejects.toThrow(
+        'Estimasi Story Point (skala 1, 2, 3, 5, 8) wajib diisi sebelum memindahkan task ke To Do.',
+      )
+    })
+
+    it('allows coordinator to move BACKLOG -> TODO via update() when SP & assignee are already set', async () => {
+      mockDb.select
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            innerJoin: vi.fn().mockReturnValue({
+              where: vi.fn().mockResolvedValue([
+                {
+                  id: 'task-1',
+                  storyId: 'story-1',
+                  divisionId: 'div-1',
+                  status: 'BACKLOG',
+                  title: 'Desain Banner',
+                  assigneeId: 'user-member',
+                  storyPoints: 1,
+                  spLockedAt: null,
+                  revisionCount: 0,
+                  startedAt: null,
+                },
+              ]),
+            }),
+          }),
+        })
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([{ role: 'COORDINATOR' }]),
+          }),
+        })
+        // checkAndUpdateStoryCompletion: all tasks
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([{ id: 'task-1', status: 'TODO' }]),
+          }),
+        })
+        // checkAndUpdateStoryCompletion: story
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([{ id: 'story-1', closedAt: null }]),
+          }),
+        })
+
+      mockDb.update.mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue(undefined),
+        }),
+      })
+
+      vi.spyOn(service, 'findOne').mockResolvedValue({ id: 'task-1', status: 'TODO' } as any)
+
+      const res = await service.update('task-1', { status: 'TODO' }, coordinator)
+      expect(res.status).toBe('TODO')
+      expect(mockActivityLogsService.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'TASK_STATUS_CHANGED' }),
+      )
+    })
+
+    it('still enforces overcapacity when a pure status change (no assignee change) activates the workload', async () => {
+      mockDb.select.mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          innerJoin: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([
+              {
+                id: 'task-1',
+                storyId: 'story-1',
+                divisionId: 'div-1',
+                status: 'BACKLOG',
+                title: 'Desain Banner Besar',
+                assigneeId: 'user-member',
+                storyPoints: 5,
+                spLockedAt: null,
+                revisionCount: 0,
+                startedAt: null,
+              },
+            ]),
+          }),
+        }),
+      })
+      mockDb.select.mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{ role: 'COORDINATOR' }]),
+        }),
+      })
+
+      // Current active = 8, capacity = 10, adding 5 SP -> 13/10 = 130%
+      mockCapacityService.getUserUtilization.mockResolvedValueOnce({
+        userId: 'user-member',
+        userName: 'Member Tim',
+        activeSp: 8,
+        capacitySp: 10,
+      })
+
+      await expect(
+        service.update('task-1', { status: 'TODO' }, coordinator),
+      ).rejects.toThrow(ConflictException)
     })
   })
 
