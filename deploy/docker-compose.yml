@@ -1,0 +1,127 @@
+name: moaspace
+
+# Stack produksi untuk MoaSpace — dijalankan di VPS, BUKAN untuk dev lokal.
+# Database & Redis lokal untuk development tetap pakai ../docker/docker-compose.yml.
+#
+# Catatan arsitektur:
+# - `backend` TIDAK pernah ter-expose ke internet. Browser hanya bicara ke
+#   `frontend` (Next.js, pola BFF); frontend yang memanggil backend secara
+#   internal lewat network Docker (http://backend:3000).
+# - `postgres` dan `redis` juga internal-only (tidak ada port mapping ke host).
+# - `nginx` (image jonasal/nginx-certbot) menangani reverse proxy + penerbitan
+#   & perpanjangan sertifikat HTTPS otomatis (Let's Encrypt) untuk domain yang
+#   dikonfigurasi di nginx/user_conf.d/*.conf.
+#
+# Jalankan dari direktori ini: `docker compose up -d`
+# File rahasia `.env` (lihat .env.production.example) wajib ada di direktori
+# yang sama sebelum menjalankan compose ini.
+
+services:
+  postgres:
+    image: bitnami/postgresql:latest
+    container_name: moaspace-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRESQL_USERNAME=postgres
+      - POSTGRESQL_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRESQL_DATABASE=moaspace
+    volumes:
+      - postgres_data:/bitnami/postgresql
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: moaspace-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Dijalankan sekali per deploy backend (lihat VPS_SETUP.md / workflow CD),
+  # bukan service yang terus hidup — pakai `docker compose --profile migrate run --rm migrate`.
+  migrate:
+    image: ghcr.io/luthfiabdllh/moaspace-backend:builder-latest
+    container_name: moaspace-migrate
+    profiles: ["migrate"]
+    environment:
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/moaspace
+    networks:
+      - internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["npm", "--workspace=@moaspace/database", "run", "db:push"]
+
+  backend:
+    image: ghcr.io/luthfiabdllh/moaspace-backend:latest
+    container_name: moaspace-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/moaspace
+      - REDIS_URL=redis://redis:6379
+    networks:
+      - internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    image: ghcr.io/luthfiabdllh/moaspace-frontend:latest
+    container_name: moaspace-frontend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - BACKEND_API_URL=http://backend:3000
+    networks:
+      - internal
+      - web
+    depends_on:
+      - backend
+
+  nginx:
+    image: jonasal/nginx-certbot:latest
+    container_name: moaspace-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - CERTBOT_EMAIL=${CERTBOT_EMAIL}
+    volumes:
+      - ./nginx/user_conf.d:/etc/nginx/user_conf.d:ro
+      - nginx_secrets:/etc/letsencrypt
+    networks:
+      - web
+    depends_on:
+      - frontend
+
+networks:
+  # Backend, Postgres, Redis, dan Frontend saling bicara di sini. Tidak ada
+  # service lain selain frontend yang juga tergabung di network `web`, jadi
+  # backend/db/redis tidak bisa dijangkau dari nginx maupun internet.
+  internal:
+    driver: bridge
+  web:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  nginx_secrets:
