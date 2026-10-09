@@ -10,6 +10,7 @@ describe('UsersService', () => {
   let usersService: UsersService
   let mockDb: any
   let mockActivityLogsService: any
+  let mockConfigService: any
 
   beforeEach(() => {
     mockDb = {
@@ -26,7 +27,11 @@ describe('UsersService', () => {
       findRecent: vi.fn().mockResolvedValue([]),
     }
 
-    usersService = new UsersService(mockDb, mockActivityLogsService)
+    mockConfigService = {
+      get: vi.fn((_key: string, defaultValue?: string) => defaultValue),
+    }
+
+    usersService = new UsersService(mockDb, mockActivityLogsService, mockConfigService)
   })
 
   describe('create', () => {

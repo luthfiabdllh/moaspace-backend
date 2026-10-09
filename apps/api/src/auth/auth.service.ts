@@ -530,7 +530,11 @@ export class AuthService {
         expiresAt,
       })
 
-      const resetUrl = `http://localhost:3001/reset-password?token=${rawToken}`
+      const frontendUrl = this.configService.get<string>(
+        'FRONTEND_URL',
+        'http://localhost:3001',
+      )
+      const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`
       this.logger.log(`📧 [EMAIL SIMULATION] Link Reset Password untuk ${normalized}: ${resetUrl}`)
     }
 

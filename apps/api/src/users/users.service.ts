@@ -7,6 +7,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import {
   authTokensTable,
   divisionMembersTable,
@@ -33,7 +34,12 @@ export class UsersService {
   constructor(
     @Inject(DATABASE_CONNECTION) private readonly db: Database,
     private readonly activityLogsService: ActivityLogsService,
+    private readonly configService: ConfigService,
   ) {}
+
+  private getFrontendUrl(): string {
+    return this.configService.get<string>('FRONTEND_URL', 'http://localhost:3001')
+  }
 
   // ─── 1. Super Admin & Koordinator Mahasiswa Unit: Daftarkan Anggota Baru ──
   async create(dto: CreateUserDto, actorId?: string) {
@@ -116,7 +122,7 @@ export class UsersService {
       },
     })
 
-    const activationUrl = `http://localhost:3001/activate?token=${rawToken}`
+    const activationUrl = `${this.getFrontendUrl()}/activate?token=${rawToken}`
     this.logger.log(`📧 [EMAIL SIMULATION] Link Aktivasi Anggota untuk ${email}: ${activationUrl}`)
 
     return {
@@ -631,7 +637,7 @@ export class UsersService {
       expiresAt,
     })
 
-    const activationUrl = `http://localhost:3001/activate?token=${rawToken}`
+    const activationUrl = `${this.getFrontendUrl()}/activate?token=${rawToken}`
     this.logger.log(`📧 [EMAIL SIMULATION] Link Aktivasi Ulang untuk ${user.email}: ${activationUrl}`)
 
     return {
