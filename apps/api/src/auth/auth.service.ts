@@ -54,7 +54,7 @@ export class AuthService {
   // ─── 1. Login with Email and Password ──────────────────────────────────────
   async login(dto: LoginDto, userAgent?: string) {
     const user = await this.validateUser(dto.email, dto.password)
-    return this.createSessionAndTokens(user, userAgent)
+    return this.createSessionAndTokens(user, userAgent, dto.rememberMe ?? false)
   }
 
   async validateUser(email: string, pass: string) {
@@ -252,7 +252,7 @@ export class AuthService {
         .where(eq(usersTable.id, user.id))
     }
 
-    return this.createSessionAndTokens(user, userAgent)
+    return this.createSessionAndTokens(user, userAgent, true)
   }
 
   // ─── 3. Refresh Token Rotation ─────────────────────────────────────────────
@@ -298,8 +298,16 @@ export class AuthService {
       .set({ revokedAt: new Date() })
       .where(eq(sessionsTable.id, session.id))
 
+    // Preserve Remember Me duration on rotation (if previous session > 7 days)
+    const sessionDurationMs = session.expiresAt.getTime() - session.createdAt.getTime()
+    const isRemembered = sessionDurationMs > 7 * 24 * 60 * 60 * 1000
+
     // Create new session & tokens
-    return this.createSessionAndTokens(user, userAgent || session.userAgent || undefined)
+    return this.createSessionAndTokens(
+      user,
+      userAgent || session.userAgent || undefined,
+      isRemembered,
+    )
   }
 
   // ─── 4. Logout (Session Revocation) ────────────────────────────────────────
@@ -604,13 +612,16 @@ export class AuthService {
       status: string
     },
     userAgent?: string,
+    rememberMe = false,
   ) {
     const sessionId = crypto.randomUUID()
     const rawRefreshToken = crypto.randomBytes(40).toString('hex')
     const refreshTokenHash = this.hashToken(rawRefreshToken)
 
     const accessTokenTtl = Number(this.configService.get<number>('ACCESS_TOKEN_TTL', 900)) // 15 menit
-    const refreshTokenTtl = Number(this.configService.get<number>('REFRESH_TOKEN_TTL', 604800)) // 7 hari
+    const rememberMeTtl = Number(this.configService.get<number>('REFRESH_TOKEN_REMEMBER_TTL', 2592000)) // 30 hari
+    const nonRememberTtl = Number(this.configService.get<number>('REFRESH_TOKEN_TTL', 86400)) // 1 hari
+    const refreshTokenTtl = rememberMe ? rememberMeTtl : nonRememberTtl
 
     const isSuperAdmin = user.isSuperAdmin ?? false
     const isKormanit = user.isKormanit ?? false
@@ -643,6 +654,7 @@ export class AuthService {
     return {
       accessToken,
       refreshToken: rawRefreshToken,
+      refreshTokenTtl,
       user: {
         id: user.id,
         name: user.name,
