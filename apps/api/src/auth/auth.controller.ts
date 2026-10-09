@@ -108,7 +108,12 @@ export class AuthController {
 
     try {
       const userAgent = req.headers['user-agent']
-      const callbackUrl = `${this.configService.get<string>('BASE_URL', 'http://localhost:3000')}/auth/google/callback`
+      // Must match exactly the redirect_uri used by getGoogleAuthUrl() to
+      // start this flow, or Google rejects the token exchange.
+      const callbackUrl = this.configService.get<string>(
+        'GOOGLE_CALLBACK_URL',
+        'http://localhost:3001/api/auth/google/callback',
+      )
       const result = await this.authService.handleGoogleCallback(
         code,
         callbackUrl,
