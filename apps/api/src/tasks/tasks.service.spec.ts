@@ -41,11 +41,15 @@ describe('TasksService', () => {
     }
 
     taskTransitionService = new TaskTransitionService()
+    const mockCalendarService = {
+      syncTaskEvent: vi.fn().mockResolvedValue(undefined),
+    } as any
     service = new TasksService(
       mockDb,
       mockActivityLogsService,
       taskTransitionService,
       mockCapacityService,
+      mockCalendarService,
     )
   })
 

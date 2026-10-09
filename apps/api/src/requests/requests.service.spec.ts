@@ -32,7 +32,10 @@ describe('RequestsService', () => {
     activityLogsService = {
       record: vi.fn().mockResolvedValue(undefined),
     }
-    service = new RequestsService(db, activityLogsService)
+    const calendarService = {
+      syncRequestEvent: vi.fn().mockResolvedValue(undefined),
+    } as any
+    service = new RequestsService(db, activityLogsService, calendarService)
   })
 
   describe('createRequest', () => {

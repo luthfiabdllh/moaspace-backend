@@ -17,6 +17,7 @@ import { TasksModule } from './tasks/tasks.module.js'
 import { CapacityModule } from './capacity/capacity.module.js'
 import { RequestsModule } from './requests/requests.module.js'
 import { UploadsModule } from './uploads/uploads.module.js'
+import { CalendarModule } from './calendar/calendar.module.js'
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { UploadsModule } from './uploads/uploads.module.js'
     CapacityModule,
     RequestsModule,
     UploadsModule,
+    CalendarModule,
   ],
   controllers: [AppController],
   providers: [

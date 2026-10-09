@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common'
 import { and, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm'
@@ -20,6 +21,7 @@ import {
 } from '@moaspace/database'
 import { DATABASE_CONNECTION, type Database } from '../database/database.provider.js'
 import { ActivityLogsService } from '../activity-logs/activity-logs.service.js'
+import { CalendarService } from '../calendar/calendar.service.js'
 import type { RequestUser } from '../common/decorators/current-user.decorator.js'
 import type { CreateRequestTemplateDto } from './dto/create-template.dto.js'
 import type { UpdateRequestTemplateDto } from './dto/update-template.dto.js'
@@ -37,9 +39,12 @@ import { randomUUID } from 'node:crypto'
 
 @Injectable()
 export class RequestsService {
+  private readonly logger = new Logger(RequestsService.name)
+
   constructor(
     @Inject(DATABASE_CONNECTION) private readonly db: Database,
     private readonly activityLogsService: ActivityLogsService,
+    private readonly calendarService: CalendarService,
   ) {}
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -253,6 +258,12 @@ export class RequestsService {
         status: initialStatus,
       },
     })
+
+    if (initialStatus !== 'DRAFT') {
+      this.calendarService.syncRequestEvent(id).catch((err) => {
+        this.logger.error(`Failed to sync calendar for request ${id}: ${err.message}`)
+      })
+    }
 
     return request
   }
@@ -619,6 +630,10 @@ export class RequestsService {
       after: { status: newStatus, reason: dto.reason },
     })
 
+    this.calendarService.syncRequestEvent(id).catch((err) => {
+      this.logger.error(`Failed to sync calendar for request ${id}: ${err.message}`)
+    })
+
     return updated
   }
 
@@ -683,6 +698,10 @@ export class RequestsService {
       actorId: user.userId,
       before: { status: 'SUBMITTED' },
       after: { status: newStatus, reason: dto.reason },
+    })
+
+    this.calendarService.syncRequestEvent(id).catch((err) => {
+      this.logger.error(`Failed to sync calendar for request ${id}: ${err.message}`)
     })
 
     return updated
@@ -1097,6 +1116,10 @@ export class RequestsService {
       after: { status: newStatus, reason: dto.reason },
     })
 
+    this.calendarService.syncRequestEvent(id).catch((err) => {
+      this.logger.error(`Failed to sync calendar for request ${id}: ${err.message}`)
+    })
+
     return updated
   }
 
@@ -1208,6 +1231,10 @@ export class RequestsService {
       after: { title: updated.title, brief: updated.brief },
     })
 
+    this.calendarService.syncRequestEvent(id).catch((err) => {
+      this.logger.error(`Failed to sync calendar for request ${id}: ${err.message}`)
+    })
+
     return updated
   }
 
@@ -1274,6 +1301,10 @@ export class RequestsService {
       actorId: user.userId,
       before: { status: 'DRAFT' },
       after: { status: newStatus },
+    })
+
+    this.calendarService.syncRequestEvent(id).catch((err) => {
+      this.logger.error(`Failed to sync calendar for request ${id}: ${err.message}`)
     })
 
     return updated

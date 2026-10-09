@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common'
@@ -23,6 +24,7 @@ import { DATABASE_CONNECTION, type Database } from '../database/database.provide
 import { ActivityLogsService } from '../activity-logs/activity-logs.service.js'
 import { CapacityService } from '../capacity/capacity.service.js'
 import { TaskTransitionService } from './task-transition.service.js'
+import { CalendarService } from '../calendar/calendar.service.js'
 import type { RequestUser } from '../common/decorators/current-user.decorator.js'
 import type { CreateTaskDto } from './dto/create-task.dto.js'
 import type { UpdateTaskDto } from './dto/update-task.dto.js'
@@ -34,11 +36,14 @@ import crypto from 'node:crypto'
 
 @Injectable()
 export class TasksService {
+  private readonly logger = new Logger(TasksService.name)
+
   constructor(
     @Inject(DATABASE_CONNECTION) private readonly db: Database,
     private readonly activityLogsService: ActivityLogsService,
     private readonly taskTransitionService: TaskTransitionService,
     private readonly capacityService: CapacityService,
+    private readonly calendarService: CalendarService,
   ) {}
 
   // ─── 1. Ambil Seluruh Task dengan Filter ───────────────────────────────────
@@ -336,6 +341,11 @@ export class TasksService {
       },
     })
 
+    // Sync ke Google Calendar jika memiliki dueDate dan assignee
+    this.calendarService.syncTaskEvent(taskId).catch((err) => {
+      this.logger.error(`Failed to sync calendar for created task ${taskId}: ${err.message}`)
+    })
+
     return this.findOne(taskId)
   }
 
@@ -558,6 +568,11 @@ export class TasksService {
       },
     })
 
+    // Sync ke Google Calendar
+    this.calendarService.syncTaskEvent(id).catch((err) => {
+      this.logger.error(`Failed to sync calendar for updated task ${id}: ${err.message}`)
+    })
+
     return this.findOne(id)
   }
 
@@ -597,6 +612,8 @@ export class TasksService {
         )
       }
     }
+
+    await this.calendarService.syncTaskEvent(id, true).catch(() => {})
 
     await this.db.delete(tasksTable).where(eq(tasksTable.id, id))
 
@@ -798,6 +815,11 @@ export class TasksService {
       actorId: user.userId,
       before: { status: task.status, position: task.position },
       after: { status: transition.status, position: dto.position },
+    })
+
+    // Sync ke Google Calendar
+    this.calendarService.syncTaskEvent(id).catch((err) => {
+      this.logger.error(`Failed to sync calendar for moved task ${id}: ${err.message}`)
     })
 
     return this.findOne(id)

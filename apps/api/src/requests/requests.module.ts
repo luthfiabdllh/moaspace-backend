@@ -3,9 +3,10 @@ import { RequestsService } from './requests.service.js'
 import { RequestsController } from './requests.controller.js'
 import { RequestTemplatesController } from './request-templates.controller.js'
 import { ActivityLogsModule } from '../activity-logs/activity-logs.module.js'
+import { CalendarModule } from '../calendar/calendar.module.js'
 
 @Module({
-  imports: [ActivityLogsModule],
+  imports: [ActivityLogsModule, CalendarModule],
   controllers: [RequestsController, RequestTemplatesController],
   providers: [RequestsService],
   exports: [RequestsService],
