@@ -34,28 +34,76 @@ export class AnnouncementsService {
     private readonly mailService: MailService,
   ) {}
 
-  // ─── 1. Cek Hak Akses Pembuatan (PSDM / Kormanit / Admin) ─────────────────
-  async canManageAnnouncements(user: RequestUser): Promise<boolean> {
+  // ─── 1. Cek Hak Akses Pembuatan (PSDM / Koordinator Divisi / Kormanit / Admin) ─
+  async getAnnouncementPermissions(user: RequestUser): Promise<{
+    canCreate: boolean
+    isGlobalManager: boolean
+    coordinatedDivisionIds: string[]
+  }> {
     if (user.isSuperAdmin || user.isKormanit) {
-      return true
+      return {
+        canCreate: true,
+        isGlobalManager: true,
+        coordinatedDivisionIds: [],
+      }
     }
 
     const memberships = await this.db
-      .select({ slug: divisionsTable.slug })
+      .select({
+        divisionId: divisionMembersTable.divisionId,
+        role: divisionMembersTable.role,
+        slug: divisionsTable.slug,
+      })
       .from(divisionMembersTable)
       .innerJoin(divisionsTable, eq(divisionMembersTable.divisionId, divisionsTable.id))
       .where(eq(divisionMembersTable.userId, user.userId))
 
-    return memberships.some((m) => m.slug.toLowerCase() === 'psdm')
+    const isPsdm = memberships.some((m) => m.slug.toLowerCase() === 'psdm')
+    if (isPsdm) {
+      return {
+        canCreate: true,
+        isGlobalManager: true,
+        coordinatedDivisionIds: memberships.map((m) => m.divisionId),
+      }
+    }
+
+    const coordinatedDivisionIds = memberships
+      .filter((m) => m.role === 'COORDINATOR')
+      .map((m) => m.divisionId)
+
+    return {
+      canCreate: coordinatedDivisionIds.length > 0,
+      isGlobalManager: false,
+      coordinatedDivisionIds,
+    }
+  }
+
+  async canManageAnnouncements(user: RequestUser): Promise<boolean> {
+    const permissions = await this.getAnnouncementPermissions(user)
+    return permissions.canCreate
   }
 
   // ─── 2. Buat Pengumuman ────────────────────────────────────────────────────
   async create(dto: CreateAnnouncementDto, user: RequestUser) {
-    const isAllowed = await this.canManageAnnouncements(user)
-    if (!isAllowed) {
+    const permissions = await this.getAnnouncementPermissions(user)
+    if (!permissions.canCreate) {
       throw new ForbiddenException(
-        'Hanya divisi PSDM, Kormanit, atau Super Admin yang dapat membuat pengumuman.',
+        'Hanya divisi PSDM, Koordinator Divisi, Kormanit, atau Super Admin yang dapat membuat pengumuman.',
       )
+    }
+
+    // Jika bukan global manager (bukan Super Admin, Kormanit, atau PSDM), hanya boleh ke divisinya sendiri
+    if (!permissions.isGlobalManager) {
+      if (dto.targetType !== 'DIVISION') {
+        throw new ForbiddenException(
+          'Koordinator divisi hanya dapat membuat pengumuman khusus untuk divisinya sendiri.',
+        )
+      }
+      if (!dto.targetDivisionId || !permissions.coordinatedDivisionIds.includes(dto.targetDivisionId)) {
+        throw new ForbiddenException(
+          'Anda hanya dapat membuat pengumuman untuk divisi yang Anda koordinasikan.',
+        )
+      }
     }
 
     if (dto.targetType === 'DIVISION' && !dto.targetDivisionId) {
@@ -248,6 +296,20 @@ export class AnnouncementsService {
       throw new ForbiddenException(
         'Hanya pembuat pengumuman, Kormanit, atau Super Admin yang dapat mengubah pengumuman ini.',
       )
+    }
+
+    const permissions = await this.getAnnouncementPermissions(user)
+    if (!permissions.isGlobalManager) {
+      if (dto.targetType === 'ALL') {
+        throw new ForbiddenException(
+          'Koordinator divisi hanya dapat mengarahkan pengumuman ke divisinya sendiri.',
+        )
+      }
+      if (dto.targetDivisionId && !permissions.coordinatedDivisionIds.includes(dto.targetDivisionId)) {
+        throw new ForbiddenException(
+          'Anda hanya dapat mengarahkan pengumuman ke divisi yang Anda koordinasikan.',
+        )
+      }
     }
 
     const updates: Record<string, any> = {

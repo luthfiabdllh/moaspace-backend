@@ -46,7 +46,7 @@ describe('AnnouncementsService', () => {
       db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           innerJoin: vi.fn().mockReturnValue({
-            where: vi.fn().mockResolvedValue([{ slug: 'psdm' }]),
+            where: vi.fn().mockResolvedValue([{ divisionId: 'div-psdm', role: 'MEMBER', slug: 'psdm' }]),
           }),
         }),
       })
@@ -55,12 +55,26 @@ describe('AnnouncementsService', () => {
       expect(result).toBe(true)
     })
 
-    it('returns false for regular member of another division', async () => {
+    it('returns true for division coordinator (role === COORDINATOR)', async () => {
+      const user = { userId: 'coord-1', isSuperAdmin: false, isKormanit: false } as any
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          innerJoin: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([{ divisionId: 'div-medkref', role: 'COORDINATOR', slug: 'media-kreatif' }]),
+          }),
+        }),
+      })
+
+      const result = await service.canManageAnnouncements(user)
+      expect(result).toBe(true)
+    })
+
+    it('returns false for regular member of non-PSDM division', async () => {
       const user = { userId: 'media-1', isSuperAdmin: false, isKormanit: false } as any
       db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           innerJoin: vi.fn().mockReturnValue({
-            where: vi.fn().mockResolvedValue([{ slug: 'media-kreatif' }]),
+            where: vi.fn().mockResolvedValue([{ divisionId: 'div-medkref', role: 'MEMBER', slug: 'media-kreatif' }]),
           }),
         }),
       })
@@ -76,7 +90,7 @@ describe('AnnouncementsService', () => {
       db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           innerJoin: vi.fn().mockReturnValue({
-            where: vi.fn().mockResolvedValue([{ slug: 'media-kreatif' }]),
+            where: vi.fn().mockResolvedValue([{ divisionId: 'div-medkref', role: 'MEMBER', slug: 'media-kreatif' }]),
           }),
         }),
       })
@@ -88,6 +102,53 @@ describe('AnnouncementsService', () => {
             content: { type: 'doc' },
             category: AnnouncementCategory.INFO,
             targetType: AnnouncementTarget.ALL,
+          },
+          user,
+        ),
+      ).rejects.toThrow(ForbiddenException)
+    })
+
+    it('throws ForbiddenException if division coordinator tries to target ALL', async () => {
+      const user = { userId: 'coord-1', isSuperAdmin: false, isKormanit: false } as any
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          innerJoin: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([{ divisionId: 'div-medkref', role: 'COORDINATOR', slug: 'media-kreatif' }]),
+          }),
+        }),
+      })
+
+      await expect(
+        service.create(
+          {
+            title: 'Pengumuman Media',
+            content: { html: '<p>Halo</p>' },
+            category: AnnouncementCategory.INFO,
+            targetType: AnnouncementTarget.ALL,
+          },
+          user,
+        ),
+      ).rejects.toThrow(ForbiddenException)
+    })
+
+    it('throws ForbiddenException if division coordinator tries to target another division', async () => {
+      const user = { userId: 'coord-1', isSuperAdmin: false, isKormanit: false } as any
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          innerJoin: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([{ divisionId: 'div-medkref', role: 'COORDINATOR', slug: 'media-kreatif' }]),
+          }),
+        }),
+      })
+
+      await expect(
+        service.create(
+          {
+            title: 'Pengumuman Acara',
+            content: { html: '<p>Halo</p>' },
+            category: AnnouncementCategory.INFO,
+            targetType: AnnouncementTarget.DIVISION,
+            targetDivisionId: 'div-acara',
           },
           user,
         ),

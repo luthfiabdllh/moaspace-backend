@@ -130,7 +130,7 @@ export function renderBaseLayout(options: BaseLayoutOptions): string {
           </div>
           <div class="footer">
             Email ini dikirim secara otomatis oleh platform MoaSpace.<br>
-            © ${new Date().getFullYear()} MoaSpace — Tim KKN Bercerita.
+            © ${new Date().getFullYear()} MoaSpace - Tim KKN Moa Bercerita.
           </div>
         </div>
       </td>

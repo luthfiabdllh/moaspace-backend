@@ -26,8 +26,7 @@ export class AnnouncementsController {
   @Get('permissions')
   @ApiOperation({ summary: 'Cek hak akses pengguna untuk membuat/mengelola pengumuman' })
   async getPermissions(@CurrentUser() user: RequestUser) {
-    const canCreate = await this.announcementsService.canManageAnnouncements(user)
-    return { canCreate }
+    return this.announcementsService.getAnnouncementPermissions(user)
   }
 
   @Post()
