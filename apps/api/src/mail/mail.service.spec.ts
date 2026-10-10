@@ -57,6 +57,30 @@ describe('MailService', () => {
       )
     })
 
+    it('sends updated announcement notification with [Pembaruan Pengumuman] subject prefix', async () => {
+      const service = new MailService(configService)
+      const sendMailSpy = vi.spyOn(service as any, 'sendMail').mockResolvedValue(undefined)
+
+      await service.sendAnnouncement(
+        [{ email: 'member@example.com', name: 'Member' }],
+        {
+          id: 'ann-1',
+          title: 'Perubahan Jam Rapat',
+          authorName: 'Admin',
+          category: 'MEETING',
+          targetType: 'ALL',
+        },
+        true, // isUpdate
+      )
+
+      expect(sendMailSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: ['member@example.com'],
+          subject: '[Pembaruan Pengumuman] Perubahan Jam Rapat',
+        }),
+      )
+    })
+
     it('sends task deadline reminder with H-1 vs Hari H subject prefix', async () => {
       const service = new MailService(configService)
       const sendMailSpy = vi.spyOn(service as any, 'sendMail').mockResolvedValue(undefined)

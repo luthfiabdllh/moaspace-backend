@@ -69,4 +69,9 @@ export class CreateAnnouncementDto {
   @IsOptional()
   @MaxLength(255)
   location?: string
+
+  @ApiPropertyOptional({ description: 'Kirim notifikasi email ke audiens target', default: true })
+  @IsBoolean()
+  @IsOptional()
+  sendEmail?: boolean
 }

@@ -95,6 +95,7 @@ export class MailService {
   async sendAnnouncement(
     recipients: RecipientInfo[],
     data: Omit<AnnouncementMailData, 'announcementUrl'> & { id: string },
+    isUpdate = false,
   ): Promise<void> {
     if (recipients.length === 0) return
 
@@ -104,7 +105,8 @@ export class MailService {
       announcementUrl,
     })
 
-    const subject = `[Pengumuman MoaSpace] ${data.title}`
+    const prefix = isUpdate ? '[Pembaruan Pengumuman]' : '[Pengumuman MoaSpace]'
+    const subject = `${prefix} ${data.title}`
     const emails = recipients.map((r) => r.email).filter(Boolean)
 
     // Send in batches of 50 recipients if needed (Resend batch limit)

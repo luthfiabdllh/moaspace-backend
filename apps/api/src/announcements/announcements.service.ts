@@ -158,10 +158,13 @@ export class AnnouncementsService {
       this.logger.error(`Failed to sync calendar for announcement ${announcementId}: ${err.message}`)
     })
 
-    // Kirim notifikasi email ke target audiens
-    this.sendAnnouncementNotification(created, user).catch((err) => {
-      this.logger.error(`Failed to send email for announcement ${announcementId}: ${err.message}`)
-    })
+    // Kirim notifikasi email ke target audiens jika sendEmail true (default true)
+    const shouldSendEmail = dto.sendEmail ?? true
+    if (shouldSendEmail) {
+      this.sendAnnouncementNotification(created, user, false).catch((err) => {
+        this.logger.error(`Failed to send email for announcement ${announcementId}: ${err.message}`)
+      })
+    }
 
     return this.findOne(announcementId, user)
   }
@@ -363,6 +366,17 @@ export class AnnouncementsService {
       this.logger.error(`Failed to sync calendar for updated announcement ${id}: ${err.message}`)
     })
 
+    // Kirim notifikasi email pembaruan jika sendEmail true (default false pada update)
+    if (dto.sendEmail) {
+      this.sendAnnouncementNotification(
+        { ...existing, ...updates, id } as any,
+        user,
+        true,
+      ).catch((err) => {
+        this.logger.error(`Failed to send update email for announcement ${id}: ${err.message}`)
+      })
+    }
+
     return this.findOne(id, user)
   }
 
@@ -485,6 +499,7 @@ export class AnnouncementsService {
   private async sendAnnouncementNotification(
     announcement: typeof announcementsTable.$inferSelect,
     authorUser: RequestUser,
+    isUpdate = false,
   ): Promise<void> {
     try {
       let recipients: { id: string; name: string; email: string }[] = []
@@ -535,18 +550,22 @@ export class AnnouncementsService {
 
       const { bodyHtml, summaryText } = this.extractContentDetails(announcement.content as any)
 
-      await this.mailService.sendAnnouncement(targetRecipients, {
-        id: announcement.id,
-        title: announcement.title,
-        category: announcement.category,
-        authorName: author?.name ?? 'Admin',
-        targetType: announcement.targetType,
-        divisionName,
-        eventStartDate: announcement.eventStartDate,
-        location: announcement.location,
-        summaryText,
-        bodyHtml,
-      })
+      await this.mailService.sendAnnouncement(
+        targetRecipients,
+        {
+          id: announcement.id,
+          title: announcement.title,
+          category: announcement.category,
+          authorName: author?.name ?? 'Admin',
+          targetType: announcement.targetType,
+          divisionName,
+          eventStartDate: announcement.eventStartDate,
+          location: announcement.location,
+          summaryText,
+          bodyHtml,
+        },
+        isUpdate,
+      )
     } catch (err: any) {
       this.logger.error(`Failed to send announcement email: ${err.message}`)
     }
