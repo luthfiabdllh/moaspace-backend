@@ -6,7 +6,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common'
-import { and, desc, eq, ilike, inArray, or } from 'drizzle-orm'
+import { and, desc, eq, ilike, inArray, or, type SQL } from 'drizzle-orm'
 import { randomUUID } from 'node:crypto'
 import {
   announcementsTable,
@@ -271,33 +271,33 @@ export class AnnouncementsService {
 
     const userCluster = userProfile?.cluster
 
-    const conditions = []
+    const conditions: (SQL | undefined)[] = []
 
     // Access control: anggota biasa hanya melihat 'ALL', divisinya, subunitnya, atau klasternya
     if (!isPrivileged) {
-      const audienceConditions = [eq(announcementsTable.targetType, 'ALL')]
+      const audienceConditions: SQL[] = [eq(announcementsTable.targetType, 'ALL')]
       if (userDivisionIds.length > 0) {
         audienceConditions.push(
           and(
             eq(announcementsTable.targetType, 'DIVISION'),
-            inArray(announcementsTable.targetDivisionId, userDivisionIds),
-          ),
+            inArray(announcementsTable.targetDivisionId, userDivisionIds)!,
+          )!,
         )
       }
       if (userSubunitIds.length > 0) {
         audienceConditions.push(
           and(
             eq(announcementsTable.targetType, 'SUBUNIT'),
-            inArray(announcementsTable.targetSubunitId, userSubunitIds),
-          ),
+            inArray(announcementsTable.targetSubunitId, userSubunitIds)!,
+          )!,
         )
       }
       if (userCluster) {
         audienceConditions.push(
           and(
             eq(announcementsTable.targetType, 'CLUSTER'),
-            eq(announcementsTable.targetCluster, userCluster),
-          ),
+            eq(announcementsTable.targetCluster, userCluster)!,
+          )!,
         )
       }
       conditions.push(or(...audienceConditions))
