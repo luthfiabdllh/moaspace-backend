@@ -1,6 +1,7 @@
 import { pgEnum, pgTable, primaryKey, text, timestamp, varchar } from 'drizzle-orm/pg-core'
 import { usersTable } from './users.schema'
 import { divisionsTable } from './divisions.schema'
+import { programsTable } from './programs.schema'
 
 export const epicScopeEnum = pgEnum('epic_scope', ['DIVISION', 'CROSS'])
 
@@ -12,6 +13,9 @@ export const epicsTable = pgTable('epics', {
   endDate: timestamp('end_date', { withTimezone: true }),
   prokerTag: varchar('proker_tag', { length: 100 }),
   scope: epicScopeEnum('scope').notNull().default('DIVISION'),
+  programId: text('program_id').references(() => programsTable.id, {
+    onDelete: 'set null',
+  }),
   ownerDivisionId: text('owner_division_id').references(() => divisionsTable.id, {
     onDelete: 'set null',
   }),

@@ -64,6 +64,7 @@ export class EpicsService {
         startDate: epicsTable.startDate,
         endDate: epicsTable.endDate,
         prokerTag: epicsTable.prokerTag,
+        programId: epicsTable.programId,
         scope: epicsTable.scope,
         ownerDivisionId: epicsTable.ownerDivisionId,
         ownerDivisionName: divisionsTable.name,
@@ -177,6 +178,7 @@ export class EpicsService {
         startDate: epicsTable.startDate,
         endDate: epicsTable.endDate,
         prokerTag: epicsTable.prokerTag,
+        programId: epicsTable.programId,
         scope: epicsTable.scope,
         ownerDivisionId: epicsTable.ownerDivisionId,
         ownerDivisionName: divisionsTable.name,
@@ -331,6 +333,7 @@ export class EpicsService {
         startDate,
         endDate,
         prokerTag: dto.prokerTag || null,
+        programId: dto.programId || null,
         scope: dto.scope,
         ownerDivisionId: dto.scope === 'DIVISION' ? dto.ownerDivisionId : null,
         createdById: user.userId,
@@ -416,6 +419,7 @@ export class EpicsService {
     if (dto.endDate !== undefined)
       updates.endDate = dto.endDate ? new Date(dto.endDate) : null
     if (dto.prokerTag !== undefined) updates.prokerTag = dto.prokerTag || null
+    if (dto.programId !== undefined) updates.programId = dto.programId || null
     if (dto.ownerDivisionId !== undefined) updates.ownerDivisionId = dto.ownerDivisionId
 
     if (dto.isClosed !== undefined) {

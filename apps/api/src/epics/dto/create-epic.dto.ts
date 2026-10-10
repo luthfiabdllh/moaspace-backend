@@ -38,6 +38,11 @@ export class CreateEpicDto {
   @MaxLength(100, { message: 'Tag proker maksimal 100 karakter.' })
   prokerTag?: string
 
+  @ApiPropertyOptional({ description: 'ID Program Kerja KKN induk', example: 'uuid' })
+  @IsOptional()
+  @IsUUID('all', { message: 'Format ID program kerja tidak valid.' })
+  programId?: string
+
   @ApiProperty({
     description: 'Cakupan epic (DIVISION = khusus satu divisi, CROSS = lintas divisi)',
     enum: ['DIVISION', 'CROSS'],

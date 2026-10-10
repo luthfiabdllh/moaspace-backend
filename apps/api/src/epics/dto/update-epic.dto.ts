@@ -37,6 +37,11 @@ export class UpdateEpicDto {
   @MaxLength(100, { message: 'Tag proker maksimal 100 karakter.' })
   prokerTag?: string
 
+  @ApiPropertyOptional({ description: 'ID Program Kerja KKN induk' })
+  @IsOptional()
+  @IsUUID('all', { message: 'Format ID program kerja tidak valid.' })
+  programId?: string
+
   @ApiPropertyOptional({ description: 'ID divisi pemilik (khusus scope DIVISION)' })
   @IsOptional()
   @IsUUID('all', { message: 'Format ID divisi pemilik tidak valid.' })

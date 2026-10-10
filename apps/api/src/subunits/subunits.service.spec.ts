@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException } from '@nestjs/common'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SubunitsService } from './subunits.service.js'
 
@@ -75,9 +75,9 @@ describe('SubunitsService', () => {
       const result = await service.findAll()
 
       expect(result).toHaveLength(1)
-      expect(result[0].memberCount).toBe(2)
-      expect(result[0].coordinators).toHaveLength(1)
-      expect(result[0].coordinators[0].name).toBe('Budi Kormasit')
+      expect(result[0]!.memberCount).toBe(2)
+      expect(result[0]!.coordinators).toHaveLength(1)
+      expect(result[0]!.coordinators[0]!.name).toBe('Budi Kormasit')
     })
   })
 

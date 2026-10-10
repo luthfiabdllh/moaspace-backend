@@ -13,6 +13,8 @@ import {
   divisionMembersTable,
   divisionsTable,
   sessionsTable,
+  subunitMembersTable,
+  subunitsTable,
   usersTable,
 } from '@moaspace/database'
 import bcrypt from 'bcrypt'
@@ -340,6 +342,8 @@ export class AuthService {
         email: usersTable.email,
         isSuperAdmin: usersTable.isSuperAdmin,
         isKormanit: usersTable.isKormanit,
+        cluster: usersTable.cluster,
+        isClusterCoordinator: usersTable.isClusterCoordinator,
         status: usersTable.status,
         passwordHash: usersTable.passwordHash,
         googleId: usersTable.googleId,
@@ -364,12 +368,26 @@ export class AuthService {
       .innerJoin(divisionsTable, eq(divisionMembersTable.divisionId, divisionsTable.id))
       .where(eq(divisionMembersTable.userId, userId))
 
+    // Fetch user subunit memberships
+    const subunitMemberships = await this.db
+      .select({
+        subunitId: subunitMembersTable.subunitId,
+        role: subunitMembersTable.role,
+        subunitName: subunitsTable.name,
+        subunitSlug: subunitsTable.slug,
+      })
+      .from(subunitMembersTable)
+      .innerJoin(subunitsTable, eq(subunitMembersTable.subunitId, subunitsTable.id))
+      .where(eq(subunitMembersTable.userId, userId))
+
     return {
       id: user.id,
       name: user.name,
       email: user.email,
       isSuperAdmin: user.isSuperAdmin,
       isKormanit: user.isKormanit,
+      cluster: user.cluster,
+      isClusterCoordinator: user.isClusterCoordinator,
       status: user.status,
       hasPassword: user.passwordHash !== null,
       googleLinked: user.googleId !== null,
@@ -380,6 +398,7 @@ export class AuthService {
           ? 'kormanit'
           : memberships[0]?.role?.toLowerCase() || 'user',
       divisions: memberships,
+      subunits: subunitMemberships,
     }
   }
 
