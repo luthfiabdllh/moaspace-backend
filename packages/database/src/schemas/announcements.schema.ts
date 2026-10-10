@@ -1,6 +1,7 @@
 import { boolean, jsonb, pgEnum, pgTable, text, timestamp, varchar } from 'drizzle-orm/pg-core'
-import { usersTable } from './users.schema'
+import { usersTable, academicClusterEnum } from './users.schema'
 import { divisionsTable } from './divisions.schema'
+import { subunitsTable } from './subunits.schema'
 
 export const announcementCategoryEnum = pgEnum('announcement_category', [
   'URGENT',   // Penting / Mendesak
@@ -12,6 +13,8 @@ export const announcementCategoryEnum = pgEnum('announcement_category', [
 export const announcementTargetEnum = pgEnum('announcement_target', [
   'ALL',      // Seluruh Tim KKN
   'DIVISION', // Divisi Tertentu
+  'SUBUNIT',  // Posko / Subunit Tertentu
+  'CLUSTER',  // Klaster Tertentu (Saintek/Soshum/Medika/Agro)
 ])
 
 export const announcementsTable = pgTable('announcements', {
@@ -23,6 +26,10 @@ export const announcementsTable = pgTable('announcements', {
   targetDivisionId: text('target_division_id').references(() => divisionsTable.id, {
     onDelete: 'set null',
   }),
+  targetSubunitId: text('target_subunit_id').references(() => subunitsTable.id, {
+    onDelete: 'set null',
+  }),
+  targetCluster: academicClusterEnum('target_cluster'),
   isPinned: boolean('is_pinned').notNull().default(false),
   eventStartDate: timestamp('event_start_date', { withTimezone: true }),
   eventEndDate: timestamp('event_end_date', { withTimezone: true }),

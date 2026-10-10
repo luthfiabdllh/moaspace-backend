@@ -14,6 +14,7 @@ import {
   calendarEventsTable,
   divisionMembersTable,
   requestsTable,
+  subunitMembersTable,
   tasksTable,
   userCalendarIntegrationsTable,
   usersTable,
@@ -701,6 +702,42 @@ export class CalendarService {
           .where(
             and(
               eq(divisionMembersTable.divisionId, announcement.targetDivisionId),
+              eq(userCalendarIntegrationsTable.syncEnabled, true),
+              eq(usersTable.status, 'ACTIVE'),
+            ),
+          )
+      } else if (announcement.targetType === 'SUBUNIT' && announcement.targetSubunitId) {
+        targetUserIntegrations = await this.db
+          .select({
+            userId: userCalendarIntegrationsTable.userId,
+            calendarId: userCalendarIntegrationsTable.calendarId,
+            googleRefreshToken: userCalendarIntegrationsTable.googleRefreshToken,
+          })
+          .from(userCalendarIntegrationsTable)
+          .innerJoin(
+            subunitMembersTable,
+            eq(userCalendarIntegrationsTable.userId, subunitMembersTable.userId),
+          )
+          .innerJoin(usersTable, eq(userCalendarIntegrationsTable.userId, usersTable.id))
+          .where(
+            and(
+              eq(subunitMembersTable.subunitId, announcement.targetSubunitId),
+              eq(userCalendarIntegrationsTable.syncEnabled, true),
+              eq(usersTable.status, 'ACTIVE'),
+            ),
+          )
+      } else if (announcement.targetType === 'CLUSTER' && announcement.targetCluster) {
+        targetUserIntegrations = await this.db
+          .select({
+            userId: userCalendarIntegrationsTable.userId,
+            calendarId: userCalendarIntegrationsTable.calendarId,
+            googleRefreshToken: userCalendarIntegrationsTable.googleRefreshToken,
+          })
+          .from(userCalendarIntegrationsTable)
+          .innerJoin(usersTable, eq(userCalendarIntegrationsTable.userId, usersTable.id))
+          .where(
+            and(
+              eq(usersTable.cluster, announcement.targetCluster),
               eq(userCalendarIntegrationsTable.syncEnabled, true),
               eq(usersTable.status, 'ACTIVE'),
             ),

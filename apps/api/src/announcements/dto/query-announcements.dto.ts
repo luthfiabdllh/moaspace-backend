@@ -18,6 +18,16 @@ export class QueryAnnouncementsDto {
   @IsOptional()
   divisionId?: string
 
+  @ApiPropertyOptional({ description: 'Filter posko/subunit target' })
+  @IsString()
+  @IsOptional()
+  subunitId?: string
+
+  @ApiPropertyOptional({ description: 'Filter klaster target' })
+  @IsString()
+  @IsOptional()
+  cluster?: string
+
   @ApiPropertyOptional({ description: 'Pencarian berdasarkan judul pengumuman' })
   @IsString()
   @IsOptional()

@@ -13,6 +13,7 @@ import {
   divisionMembersTable,
   divisionsTable,
   subunitMembersTable,
+  subunitsTable,
   usersTable,
 } from '@moaspace/database'
 import { DATABASE_CONNECTION, type Database } from '../database/database.provider.js'
@@ -35,19 +36,38 @@ export class AnnouncementsService {
     private readonly mailService: MailService,
   ) {}
 
-  // ─── 1. Cek Hak Akses Pembuatan (PSDM / Koordinator Divisi / Kormanit / Admin) ─
+  // ─── 1. Cek Hak Akses Pembuatan (PSDM / Koordinator Divisi / Kormasit / Kormater / Kormanit / Admin) ─
   async getAnnouncementPermissions(user: RequestUser): Promise<{
     canCreate: boolean
     isGlobalManager: boolean
     coordinatedDivisionIds: string[]
+    coordinatedSubunitIds: string[]
+    isClusterCoordinator: boolean
+    coordinatedCluster: string | null
   }> {
     if (user.isSuperAdmin || user.isKormanit) {
       return {
         canCreate: true,
         isGlobalManager: true,
         coordinatedDivisionIds: [],
+        coordinatedSubunitIds: [],
+        isClusterCoordinator: false,
+        coordinatedCluster: null,
       }
     }
+
+    // Ambil info profil user (cluster & status Kormater)
+    const [userRow] = await this.db
+      .select({
+        cluster: usersTable.cluster,
+        isClusterCoordinator: usersTable.isClusterCoordinator,
+      })
+      .from(usersTable)
+      .where(eq(usersTable.id, user.userId))
+      .limit(1)
+
+    const isClusterCoordinator = Boolean(userRow?.isClusterCoordinator && userRow?.cluster)
+    const coordinatedCluster = isClusterCoordinator ? userRow!.cluster : null
 
     const memberships = await this.db
       .select({
@@ -65,6 +85,9 @@ export class AnnouncementsService {
         canCreate: true,
         isGlobalManager: true,
         coordinatedDivisionIds: memberships.map((m) => m.divisionId),
+        coordinatedSubunitIds: [],
+        isClusterCoordinator,
+        coordinatedCluster,
       }
     }
 
@@ -72,17 +95,9 @@ export class AnnouncementsService {
       .filter((m) => m.role === 'COORDINATOR')
       .map((m) => m.divisionId)
 
-    if (coordinatedDivisionIds.length > 0) {
-      return {
-        canCreate: true,
-        isGlobalManager: false,
-        coordinatedDivisionIds,
-      }
-    }
-
-    // Cek apakah pengguna merupakan Koordinator Subunit (Kormasit)
-    const isSubunitCoordinator = await this.db
-      .select({ id: subunitMembersTable.id })
+    // Cek subunit yang dikoordinasikan (Kormasit)
+    const coordinatedSubunits = await this.db
+      .select({ subunitId: subunitMembersTable.subunitId })
       .from(subunitMembersTable)
       .where(
         and(
@@ -91,10 +106,20 @@ export class AnnouncementsService {
         ),
       )
 
+    const coordinatedSubunitIds = coordinatedSubunits.map((s) => s.subunitId)
+
+    const canCreate =
+      coordinatedDivisionIds.length > 0 ||
+      coordinatedSubunitIds.length > 0 ||
+      isClusterCoordinator
+
     return {
-      canCreate: isSubunitCoordinator.length > 0,
+      canCreate,
       isGlobalManager: false,
-      coordinatedDivisionIds: [],
+      coordinatedDivisionIds,
+      coordinatedSubunitIds,
+      isClusterCoordinator,
+      coordinatedCluster,
     }
   }
 
@@ -108,26 +133,55 @@ export class AnnouncementsService {
     const permissions = await this.getAnnouncementPermissions(user)
     if (!permissions.canCreate) {
       throw new ForbiddenException(
-        'Hanya divisi PSDM, Koordinator Divisi, Kormanit, atau Super Admin yang dapat membuat pengumuman.',
+        'Hanya divisi PSDM, Koordinator Divisi, Koordinator Subunit, Koordinator Klaster, Kormanit, atau Super Admin yang dapat membuat pengumuman.',
       )
     }
 
-    // Jika bukan global manager (bukan Super Admin, Kormanit, atau PSDM), hanya boleh ke divisinya sendiri
+    const targetType = dto.targetType || 'ALL'
+
+    // Jika bukan global manager (Super Admin, Kormanit, atau PSDM), periksa batas kewenangan
     if (!permissions.isGlobalManager) {
-      if (dto.targetType !== 'DIVISION') {
+      if (targetType === 'ALL') {
         throw new ForbiddenException(
-          'Koordinator divisi hanya dapat membuat pengumuman khusus untuk divisinya sendiri.',
+          'Hanya Kormanit, PSDM, atau Super Admin yang dapat membuat pengumuman untuk seluruh tim KKN.',
         )
       }
-      if (!dto.targetDivisionId || !permissions.coordinatedDivisionIds.includes(dto.targetDivisionId)) {
-        throw new ForbiddenException(
-          'Anda hanya dapat membuat pengumuman untuk divisi yang Anda koordinasikan.',
-        )
+
+      if (targetType === 'DIVISION') {
+        if (!dto.targetDivisionId || !permissions.coordinatedDivisionIds.includes(dto.targetDivisionId)) {
+          throw new ForbiddenException(
+            'Anda hanya dapat membuat pengumuman untuk divisi yang Anda koordinasikan.',
+          )
+        }
+      } else if (targetType === 'SUBUNIT') {
+        if (!dto.targetSubunitId || !permissions.coordinatedSubunitIds.includes(dto.targetSubunitId)) {
+          throw new ForbiddenException(
+            'Anda hanya dapat membuat pengumuman untuk posko / subunit yang Anda koordinasikan.',
+          )
+        }
+      } else if (targetType === 'CLUSTER') {
+        if (
+          !permissions.isClusterCoordinator ||
+          !permissions.coordinatedCluster ||
+          dto.targetCluster !== permissions.coordinatedCluster
+        ) {
+          throw new ForbiddenException(
+            'Anda hanya dapat membuat pengumuman untuk klaster keilmuan yang Anda koordinasikan.',
+          )
+        }
       }
     }
 
-    if (dto.targetType === 'DIVISION' && !dto.targetDivisionId) {
+    if (targetType === 'DIVISION' && !dto.targetDivisionId) {
       throw new BadRequestException('Target divisi wajib dipilih jika target type DIVISION.')
+    }
+
+    if (targetType === 'SUBUNIT' && !dto.targetSubunitId) {
+      throw new BadRequestException('Target posko/subunit wajib dipilih jika target type SUBUNIT.')
+    }
+
+    if (targetType === 'CLUSTER' && !dto.targetCluster) {
+      throw new BadRequestException('Target klaster wajib dipilih jika target type CLUSTER.')
     }
 
     const announcementId = randomUUID()
@@ -145,8 +199,10 @@ export class AnnouncementsService {
         title: dto.title.trim(),
         content: dto.content,
         category: dto.category || 'INFO',
-        targetType: dto.targetType || 'ALL',
-        targetDivisionId: dto.targetType === 'DIVISION' ? dto.targetDivisionId || null : null,
+        targetType,
+        targetDivisionId: targetType === 'DIVISION' ? dto.targetDivisionId || null : null,
+        targetSubunitId: targetType === 'SUBUNIT' ? dto.targetSubunitId || null : null,
+        targetCluster: targetType === 'CLUSTER' ? dto.targetCluster || null : null,
         isPinned: dto.isPinned ?? false,
         eventStartDate: startDate,
         eventEndDate: endDate,
@@ -200,20 +256,51 @@ export class AnnouncementsService {
 
     const userDivisionIds = userDivisions.map((d) => d.divisionId)
 
+    const userSubunits = await this.db
+      .select({ subunitId: subunitMembersTable.subunitId })
+      .from(subunitMembersTable)
+      .where(eq(subunitMembersTable.userId, user.userId))
+
+    const userSubunitIds = userSubunits.map((s) => s.subunitId)
+
+    const [userProfile] = await this.db
+      .select({ cluster: usersTable.cluster })
+      .from(usersTable)
+      .where(eq(usersTable.id, user.userId))
+      .limit(1)
+
+    const userCluster = userProfile?.cluster
+
     const conditions = []
 
-    // Access control: anggota biasa hanya melihat 'ALL' atau divisinya
+    // Access control: anggota biasa hanya melihat 'ALL', divisinya, subunitnya, atau klasternya
     if (!isPrivileged) {
+      const audienceConditions = [eq(announcementsTable.targetType, 'ALL')]
       if (userDivisionIds.length > 0) {
-        conditions.push(
-          or(
-            eq(announcementsTable.targetType, 'ALL'),
+        audienceConditions.push(
+          and(
+            eq(announcementsTable.targetType, 'DIVISION'),
             inArray(announcementsTable.targetDivisionId, userDivisionIds),
           ),
         )
-      } else {
-        conditions.push(eq(announcementsTable.targetType, 'ALL'))
       }
+      if (userSubunitIds.length > 0) {
+        audienceConditions.push(
+          and(
+            eq(announcementsTable.targetType, 'SUBUNIT'),
+            inArray(announcementsTable.targetSubunitId, userSubunitIds),
+          ),
+        )
+      }
+      if (userCluster) {
+        audienceConditions.push(
+          and(
+            eq(announcementsTable.targetType, 'CLUSTER'),
+            eq(announcementsTable.targetCluster, userCluster),
+          ),
+        )
+      }
+      conditions.push(or(...audienceConditions))
     }
 
     if (query.category) {
@@ -226,6 +313,14 @@ export class AnnouncementsService {
 
     if (query.divisionId) {
       conditions.push(eq(announcementsTable.targetDivisionId, query.divisionId))
+    }
+
+    if (query.subunitId) {
+      conditions.push(eq(announcementsTable.targetSubunitId, query.subunitId))
+    }
+
+    if (query.cluster) {
+      conditions.push(eq(announcementsTable.targetCluster, query.cluster as any))
     }
 
     if (query.search?.trim()) {
@@ -245,10 +340,16 @@ export class AnnouncementsService {
           name: divisionsTable.name,
           slug: divisionsTable.slug,
         },
+        targetSubunit: {
+          id: subunitsTable.id,
+          name: subunitsTable.name,
+          slug: subunitsTable.slug,
+        },
       })
       .from(announcementsTable)
       .innerJoin(usersTable, eq(announcementsTable.authorId, usersTable.id))
       .leftJoin(divisionsTable, eq(announcementsTable.targetDivisionId, divisionsTable.id))
+      .leftJoin(subunitsTable, eq(announcementsTable.targetSubunitId, subunitsTable.id))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(announcementsTable.isPinned), desc(announcementsTable.createdAt))
 
@@ -256,6 +357,7 @@ export class AnnouncementsService {
       ...r.announcement,
       author: r.author,
       targetDivision: r.targetDivision?.id ? r.targetDivision : null,
+      targetSubunit: r.targetSubunit?.id ? r.targetSubunit : null,
     }))
   }
 
@@ -274,10 +376,16 @@ export class AnnouncementsService {
           name: divisionsTable.name,
           slug: divisionsTable.slug,
         },
+        targetSubunit: {
+          id: subunitsTable.id,
+          name: subunitsTable.name,
+          slug: subunitsTable.slug,
+        },
       })
       .from(announcementsTable)
       .innerJoin(usersTable, eq(announcementsTable.authorId, usersTable.id))
       .leftJoin(divisionsTable, eq(announcementsTable.targetDivisionId, divisionsTable.id))
+      .leftJoin(subunitsTable, eq(announcementsTable.targetSubunitId, subunitsTable.id))
       .where(eq(announcementsTable.id, id))
       .limit(1)
 
@@ -286,10 +394,26 @@ export class AnnouncementsService {
     }
 
     const isPrivileged = Boolean(user.isSuperAdmin || user.isKormanit)
-    if (!isPrivileged && row.announcement.targetType === 'DIVISION') {
-      const isMember = await this.isMemberOfDivision(user.userId, row.announcement.targetDivisionId)
-      if (!isMember) {
-        throw new ForbiddenException('Anda tidak memiliki wewenang melihat pengumuman divisi ini.')
+    if (!isPrivileged) {
+      if (row.announcement.targetType === 'DIVISION') {
+        const isMember = await this.isMemberOfDivision(user.userId, row.announcement.targetDivisionId)
+        if (!isMember) {
+          throw new ForbiddenException('Anda tidak memiliki wewenang melihat pengumuman divisi ini.')
+        }
+      } else if (row.announcement.targetType === 'SUBUNIT') {
+        const isMember = await this.isMemberOfSubunit(user.userId, row.announcement.targetSubunitId)
+        if (!isMember) {
+          throw new ForbiddenException('Anda tidak memiliki wewenang melihat pengumuman posko/subunit ini.')
+        }
+      } else if (row.announcement.targetType === 'CLUSTER') {
+        const [u] = await this.db
+          .select({ cluster: usersTable.cluster })
+          .from(usersTable)
+          .where(eq(usersTable.id, user.userId))
+          .limit(1)
+        if (!u?.cluster || u.cluster !== row.announcement.targetCluster) {
+          throw new ForbiddenException('Anda tidak memiliki wewenang melihat pengumuman klaster ini.')
+        }
       }
     }
 
@@ -297,6 +421,7 @@ export class AnnouncementsService {
       ...row.announcement,
       author: row.author,
       targetDivision: row.targetDivision?.id ? row.targetDivision : null,
+      targetSubunit: row.targetSubunit?.id ? row.targetSubunit : null,
     }
   }
 
@@ -322,16 +447,39 @@ export class AnnouncementsService {
     }
 
     const permissions = await this.getAnnouncementPermissions(user)
+    const newTargetType = dto.targetType !== undefined ? dto.targetType : existing.targetType
+
     if (!permissions.isGlobalManager) {
-      if (dto.targetType === 'ALL') {
+      if (newTargetType === 'ALL') {
         throw new ForbiddenException(
-          'Koordinator divisi hanya dapat mengarahkan pengumuman ke divisinya sendiri.',
+          'Hanya Kormanit, PSDM, atau Super Admin yang dapat mengarahkan pengumuman ke seluruh tim KKN.',
         )
       }
-      if (dto.targetDivisionId && !permissions.coordinatedDivisionIds.includes(dto.targetDivisionId)) {
-        throw new ForbiddenException(
-          'Anda hanya dapat mengarahkan pengumuman ke divisi yang Anda koordinasikan.',
-        )
+      if (newTargetType === 'DIVISION') {
+        const divisionId = dto.targetDivisionId || existing.targetDivisionId
+        if (!divisionId || !permissions.coordinatedDivisionIds.includes(divisionId)) {
+          throw new ForbiddenException(
+            'Anda hanya dapat mengarahkan pengumuman ke divisi yang Anda koordinasikan.',
+          )
+        }
+      } else if (newTargetType === 'SUBUNIT') {
+        const subunitId = dto.targetSubunitId || existing.targetSubunitId
+        if (!subunitId || !permissions.coordinatedSubunitIds.includes(subunitId)) {
+          throw new ForbiddenException(
+            'Anda hanya dapat mengarahkan pengumuman ke posko/subunit yang Anda koordinasikan.',
+          )
+        }
+      } else if (newTargetType === 'CLUSTER') {
+        const cluster = dto.targetCluster || existing.targetCluster
+        if (
+          !permissions.isClusterCoordinator ||
+          !permissions.coordinatedCluster ||
+          cluster !== permissions.coordinatedCluster
+        ) {
+          throw new ForbiddenException(
+            'Anda hanya dapat mengarahkan pengumuman ke klaster yang Anda koordinasikan.',
+          )
+        }
       }
     }
 
@@ -349,8 +497,14 @@ export class AnnouncementsService {
       updates.targetType = dto.targetType
       updates.targetDivisionId =
         dto.targetType === 'DIVISION' ? dto.targetDivisionId || existing.targetDivisionId : null
-    } else if (dto.targetDivisionId !== undefined) {
-      updates.targetDivisionId = dto.targetDivisionId || null
+      updates.targetSubunitId =
+        dto.targetType === 'SUBUNIT' ? dto.targetSubunitId || existing.targetSubunitId : null
+      updates.targetCluster =
+        dto.targetType === 'CLUSTER' ? dto.targetCluster || existing.targetCluster : null
+    } else {
+      if (dto.targetDivisionId !== undefined) updates.targetDivisionId = dto.targetDivisionId || null
+      if (dto.targetSubunitId !== undefined) updates.targetSubunitId = dto.targetSubunitId || null
+      if (dto.targetCluster !== undefined) updates.targetCluster = dto.targetCluster || null
     }
 
     if (dto.eventStartDate !== undefined) {
@@ -438,7 +592,7 @@ export class AnnouncementsService {
     return { success: true, message: 'Pengumuman berhasil dihapus.' }
   }
 
-  // ─── Helper: Cek Keanggotaan Divisi ────────────────────────────────────────
+  // ─── Helper: Cek Keanggotaan Divisi & Subunit ──────────────────────────────
   private async isMemberOfDivision(userId: string, divisionId: string | null): Promise<boolean> {
     if (!divisionId) return false
     const [membership] = await this.db
@@ -448,6 +602,21 @@ export class AnnouncementsService {
         and(
           eq(divisionMembersTable.userId, userId),
           eq(divisionMembersTable.divisionId, divisionId),
+        ),
+      )
+      .limit(1)
+    return Boolean(membership)
+  }
+
+  private async isMemberOfSubunit(userId: string, subunitId: string | null): Promise<boolean> {
+    if (!subunitId) return false
+    const [membership] = await this.db
+      .select()
+      .from(subunitMembersTable)
+      .where(
+        and(
+          eq(subunitMembersTable.userId, userId),
+          eq(subunitMembersTable.subunitId, subunitId),
         ),
       )
       .limit(1)
@@ -523,6 +692,9 @@ export class AnnouncementsService {
   ): Promise<void> {
     try {
       let recipients: { id: string; name: string; email: string }[] = []
+      let divisionName: string | undefined
+      let subunitName: string | undefined
+      let clusterName: string | undefined
 
       if (announcement.targetType === 'ALL') {
         recipients = await this.db
@@ -533,7 +705,7 @@ export class AnnouncementsService {
           })
           .from(usersTable)
           .where(eq(usersTable.status, 'ACTIVE'))
-      } else if (announcement.targetDivisionId) {
+      } else if (announcement.targetType === 'DIVISION' && announcement.targetDivisionId) {
         recipients = await this.db
           .select({
             id: usersTable.id,
@@ -548,20 +720,54 @@ export class AnnouncementsService {
               eq(usersTable.status, 'ACTIVE'),
             ),
           )
-      }
 
-      // Filter out author themselves
-      const targetRecipients = recipients.filter((r) => r.id !== authorUser.userId)
-      if (targetRecipients.length === 0) return
-
-      let divisionName: string | undefined
-      if (announcement.targetDivisionId) {
         const [div] = await this.db
           .select({ name: divisionsTable.name })
           .from(divisionsTable)
           .where(eq(divisionsTable.id, announcement.targetDivisionId))
         divisionName = div?.name
+      } else if (announcement.targetType === 'SUBUNIT' && announcement.targetSubunitId) {
+        recipients = await this.db
+          .select({
+            id: usersTable.id,
+            name: usersTable.name,
+            email: usersTable.email,
+          })
+          .from(subunitMembersTable)
+          .innerJoin(usersTable, eq(subunitMembersTable.userId, usersTable.id))
+          .where(
+            and(
+              eq(subunitMembersTable.subunitId, announcement.targetSubunitId),
+              eq(usersTable.status, 'ACTIVE'),
+            ),
+          )
+
+        const [sub] = await this.db
+          .select({ name: subunitsTable.name })
+          .from(subunitsTable)
+          .where(eq(subunitsTable.id, announcement.targetSubunitId))
+        subunitName = sub?.name
+      } else if (announcement.targetType === 'CLUSTER' && announcement.targetCluster) {
+        recipients = await this.db
+          .select({
+            id: usersTable.id,
+            name: usersTable.name,
+            email: usersTable.email,
+          })
+          .from(usersTable)
+          .where(
+            and(
+              eq(usersTable.cluster, announcement.targetCluster),
+              eq(usersTable.status, 'ACTIVE'),
+            ),
+          )
+
+        clusterName = announcement.targetCluster
       }
+
+      // Filter out author themselves
+      const targetRecipients = recipients.filter((r) => r.id !== authorUser.userId)
+      if (targetRecipients.length === 0) return
 
       const [author] = await this.db
         .select({ name: usersTable.name })
@@ -579,6 +785,8 @@ export class AnnouncementsService {
           authorName: author?.name ?? 'Admin',
           targetType: announcement.targetType,
           divisionName,
+          subunitName,
+          clusterName,
           eventStartDate: announcement.eventStartDate,
           location: announcement.location,
           summaryText,
@@ -591,3 +799,4 @@ export class AnnouncementsService {
     }
   }
 }
+

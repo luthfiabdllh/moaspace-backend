@@ -6,6 +6,8 @@ export interface AnnouncementMailData {
   authorName: string
   targetType: string
   divisionName?: string
+  subunitName?: string
+  clusterName?: string
   eventStartDate?: Date | string | null
   location?: string | null
   summaryText?: string
@@ -23,7 +25,14 @@ const CATEGORY_COLORS: Record<string, { bg: string; text: string; label: string 
 export function renderAnnouncementMail(data: AnnouncementMailData): { html: string; text: string } {
   const defaultCat = { bg: '#e0f2fe', text: '#0369a1', label: 'Informasi Umum' }
   const cat = (data.category ? CATEGORY_COLORS[data.category] : undefined) ?? defaultCat
-  const targetLabel = data.targetType === 'DIVISION' ? `Divisi ${data.divisionName ?? ''}` : 'Seluruh Tim'
+  let targetLabel = 'Seluruh Tim'
+  if (data.targetType === 'DIVISION') {
+    targetLabel = `Divisi ${data.divisionName ?? ''}`
+  } else if (data.targetType === 'SUBUNIT') {
+    targetLabel = `Posko / Subunit ${data.subunitName ?? ''}`
+  } else if (data.targetType === 'CLUSTER') {
+    targetLabel = `Klaster ${data.clusterName ?? ''}`
+  }
 
   let eventInfoHtml = ''
   if (data.eventStartDate) {

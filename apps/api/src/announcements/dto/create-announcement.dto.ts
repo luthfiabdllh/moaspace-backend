@@ -20,7 +20,12 @@ export enum AnnouncementCategory {
 export enum AnnouncementTarget {
   ALL = 'ALL',
   DIVISION = 'DIVISION',
+  SUBUNIT = 'SUBUNIT',
+  CLUSTER = 'CLUSTER',
 }
+
+export const ACADEMIC_CLUSTERS = ['SAINTEK', 'SOSHUM', 'MEDIKA', 'AGRO'] as const
+export type AcademicClusterType = (typeof ACADEMIC_CLUSTERS)[number]
 
 export class CreateAnnouncementDto {
   @ApiProperty({ description: 'Judul pengumuman', example: 'Briefing Program Kerja Tim KKN' })
@@ -48,6 +53,19 @@ export class CreateAnnouncementDto {
   @IsString()
   @IsOptional()
   targetDivisionId?: string
+
+  @ApiPropertyOptional({ description: 'ID posko/subunit target jika targetType SUBUNIT' })
+  @IsString()
+  @IsOptional()
+  targetSubunitId?: string
+
+  @ApiPropertyOptional({
+    description: 'Klaster target jika targetType CLUSTER',
+    enum: ACADEMIC_CLUSTERS,
+  })
+  @IsEnum(ACADEMIC_CLUSTERS, { message: 'Klaster harus berupa SAINTEK, SOSHUM, MEDIKA, atau AGRO' })
+  @IsOptional()
+  targetCluster?: AcademicClusterType
 
   @ApiPropertyOptional({ description: 'Status disematkan di paling atas' })
   @IsBoolean()
