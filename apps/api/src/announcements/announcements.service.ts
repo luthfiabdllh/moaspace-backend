@@ -17,6 +17,7 @@ import {
 import { DATABASE_CONNECTION, type Database } from '../database/database.provider.js'
 import { ActivityLogsService } from '../activity-logs/activity-logs.service.js'
 import { CalendarService } from '../calendar/calendar.service.js'
+import { MailService } from '../mail/mail.service.js'
 import type { RequestUser } from '../common/decorators/current-user.decorator.js'
 import type { CreateAnnouncementDto } from './dto/create-announcement.dto.js'
 import type { UpdateAnnouncementDto } from './dto/update-announcement.dto.js'
@@ -30,6 +31,7 @@ export class AnnouncementsService {
     @Inject(DATABASE_CONNECTION) private readonly db: Database,
     private readonly activityLogsService: ActivityLogsService,
     private readonly calendarService: CalendarService,
+    private readonly mailService: MailService,
   ) {}
 
   // ─── 1. Cek Hak Akses Pembuatan (PSDM / Kormanit / Admin) ─────────────────
@@ -106,6 +108,11 @@ export class AnnouncementsService {
     // Sinkronisasi ke Google Calendar jika memiliki jadwal kegiatan
     this.calendarService.syncAnnouncementEvent(announcementId).catch((err) => {
       this.logger.error(`Failed to sync calendar for announcement ${announcementId}: ${err.message}`)
+    })
+
+    // Kirim notifikasi email ke target audiens
+    this.sendAnnouncementNotification(created, user).catch((err) => {
+      this.logger.error(`Failed to send email for announcement ${announcementId}: ${err.message}`)
     })
 
     return this.findOne(announcementId, user)
@@ -349,5 +356,90 @@ export class AnnouncementsService {
       )
       .limit(1)
     return Boolean(membership)
+  }
+
+  private extractPlainText(content: Record<string, unknown>): string {
+    if (!content || typeof content !== 'object') return ''
+    try {
+      const texts: string[] = []
+      const traverse = (node: any) => {
+        if (!node) return
+        if (node.text) texts.push(node.text)
+        if (Array.isArray(node.content)) {
+          for (const child of node.content) traverse(child)
+        }
+      }
+      traverse(content)
+      return texts.join(' ').slice(0, 300)
+    } catch {
+      return ''
+    }
+  }
+
+  private async sendAnnouncementNotification(
+    announcement: typeof announcementsTable.$inferSelect,
+    authorUser: RequestUser,
+  ): Promise<void> {
+    try {
+      let recipients: { id: string; name: string; email: string }[] = []
+
+      if (announcement.targetType === 'ALL') {
+        recipients = await this.db
+          .select({
+            id: usersTable.id,
+            name: usersTable.name,
+            email: usersTable.email,
+          })
+          .from(usersTable)
+          .where(eq(usersTable.status, 'ACTIVE'))
+      } else if (announcement.targetDivisionId) {
+        recipients = await this.db
+          .select({
+            id: usersTable.id,
+            name: usersTable.name,
+            email: usersTable.email,
+          })
+          .from(divisionMembersTable)
+          .innerJoin(usersTable, eq(divisionMembersTable.userId, usersTable.id))
+          .where(
+            and(
+              eq(divisionMembersTable.divisionId, announcement.targetDivisionId),
+              eq(usersTable.status, 'ACTIVE'),
+            ),
+          )
+      }
+
+      // Filter out author themselves
+      const targetRecipients = recipients.filter((r) => r.id !== authorUser.userId)
+      if (targetRecipients.length === 0) return
+
+      let divisionName: string | undefined
+      if (announcement.targetDivisionId) {
+        const [div] = await this.db
+          .select({ name: divisionsTable.name })
+          .from(divisionsTable)
+          .where(eq(divisionsTable.id, announcement.targetDivisionId))
+        divisionName = div?.name
+      }
+
+      const [author] = await this.db
+        .select({ name: usersTable.name })
+        .from(usersTable)
+        .where(eq(usersTable.id, authorUser.userId))
+
+      await this.mailService.sendAnnouncement(targetRecipients, {
+        id: announcement.id,
+        title: announcement.title,
+        category: announcement.category,
+        authorName: author?.name ?? 'Admin',
+        targetType: announcement.targetType,
+        divisionName,
+        eventStartDate: announcement.eventStartDate,
+        location: announcement.location,
+        summaryText: this.extractPlainText(announcement.content as any),
+      })
+    } catch (err: any) {
+      this.logger.error(`Failed to send announcement email: ${err.message}`)
+    }
   }
 }

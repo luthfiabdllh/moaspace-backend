@@ -31,7 +31,16 @@ describe('UsersService', () => {
       get: vi.fn((_key: string, defaultValue?: string) => defaultValue),
     }
 
-    usersService = new UsersService(mockDb, mockActivityLogsService, mockConfigService)
+    const mockMailService = {
+      sendAccountActivation: vi.fn().mockResolvedValue(undefined),
+    }
+
+    usersService = new UsersService(
+      mockDb,
+      mockActivityLogsService,
+      mockConfigService,
+      mockMailService as any,
+    )
   })
 
   describe('create', () => {

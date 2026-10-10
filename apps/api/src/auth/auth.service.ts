@@ -23,6 +23,7 @@ import {
   DATABASE_CONNECTION,
   type Database,
 } from '../database/database.provider.js'
+import { MailService } from '../mail/mail.service.js'
 import type { ChangePasswordDto } from './dto/change-password.dto.js'
 import type { LoginDto } from './dto/login.dto.js'
 import type { UpdateProfileDto } from './dto/update-profile.dto.js'
@@ -37,6 +38,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly activityLogsService: ActivityLogsService,
+    private readonly mailService: MailService,
   ) {
     const googleClientId = this.configService.get<string>('GOOGLE_CLIENT_ID')
     const googleClientSecret = this.configService.get<string>('GOOGLE_CLIENT_SECRET')
@@ -543,7 +545,10 @@ export class AuthService {
         'http://localhost:3001',
       )
       const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`
-      this.logger.log(`📧 [EMAIL SIMULATION] Link Reset Password untuk ${normalized}: ${resetUrl}`)
+      await this.mailService.sendPasswordReset(
+        { email: user.email, name: user.name },
+        resetUrl,
+      )
     }
 
     // Always return identical response to prevent user enumeration

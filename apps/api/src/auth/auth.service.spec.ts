@@ -44,11 +44,16 @@ describe('AuthService', () => {
       record: vi.fn().mockResolvedValue({ id: 'log-1' }),
     }
 
+    const mockMailService = {
+      sendPasswordReset: vi.fn().mockResolvedValue(undefined),
+    }
+
     authService = new AuthService(
       mockDb,
       mockJwtService,
       mockConfigService,
       mockActivityLogsService as any,
+      mockMailService as any,
     )
   })
 

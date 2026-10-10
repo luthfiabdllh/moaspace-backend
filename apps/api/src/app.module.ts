@@ -19,6 +19,8 @@ import { RequestsModule } from './requests/requests.module.js'
 import { UploadsModule } from './uploads/uploads.module.js'
 import { CalendarModule } from './calendar/calendar.module.js'
 import { AnnouncementsModule } from './announcements/announcements.module.js'
+import { MailModule } from './mail/mail.module.js'
+import { SchedulerModule } from './scheduler/scheduler.module.js'
 
 @Module({
   imports: [
@@ -40,6 +42,8 @@ import { AnnouncementsModule } from './announcements/announcements.module.js'
     UploadsModule,
     CalendarModule,
     AnnouncementsModule,
+    MailModule,
+    SchedulerModule,
   ],
   controllers: [AppController],
   providers: [

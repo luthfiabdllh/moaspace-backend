@@ -22,7 +22,10 @@ describe('AnnouncementsService', () => {
     calendarService = {
       syncAnnouncementEvent: vi.fn().mockResolvedValue(undefined),
     }
-    service = new AnnouncementsService(db, activityLogsService, calendarService)
+    const mailService = {
+      sendAnnouncementNotification: vi.fn().mockResolvedValue(undefined),
+    }
+    service = new AnnouncementsService(db, activityLogsService, calendarService, mailService as any)
   })
 
   describe('canManageAnnouncements', () => {

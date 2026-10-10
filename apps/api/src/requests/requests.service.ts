@@ -36,6 +36,8 @@ import type { DeliverRequestDto } from './dto/deliver-request.dto.js'
 import type { ConfirmRequestDto } from './dto/confirm-request.dto.js'
 import type { QueryRequestsDto } from './dto/query-requests.dto.js'
 import { randomUUID } from 'node:crypto'
+import { MailService } from '../mail/mail.service.js'
+import type { RequestEventType } from '../mail/templates/request-event-mail.js'
 
 @Injectable()
 export class RequestsService {
@@ -45,6 +47,7 @@ export class RequestsService {
     @Inject(DATABASE_CONNECTION) private readonly db: Database,
     private readonly activityLogsService: ActivityLogsService,
     private readonly calendarService: CalendarService,
+    private readonly mailService: MailService,
   ) {}
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -262,6 +265,14 @@ export class RequestsService {
     if (initialStatus !== 'DRAFT') {
       this.calendarService.syncRequestEvent(id).catch((err) => {
         this.logger.error(`Failed to sync calendar for request ${id}: ${err.message}`)
+      })
+
+      const eventType: RequestEventType =
+        initialStatus === 'WAITING_ORIGIN_APPROVAL'
+          ? 'WAITING_ORIGIN_APPROVAL'
+          : 'NEW_REQUEST'
+      this.sendRequestNotification(id, eventType).catch((err) => {
+        this.logger.error(`Failed to send request email for ${id}: ${err.message}`)
       })
     }
 
@@ -634,6 +645,12 @@ export class RequestsService {
       this.logger.error(`Failed to sync calendar for request ${id}: ${err.message}`)
     })
 
+    const eventType: RequestEventType =
+      dto.action === 'APPROVE' ? 'NEW_REQUEST' : 'REJECTED'
+    this.sendRequestNotification(id, eventType, dto.reason).catch((err) => {
+      this.logger.error(`Failed to send origin approval email for ${id}: ${err.message}`)
+    })
+
     return updated
   }
 
@@ -704,6 +721,16 @@ export class RequestsService {
       this.logger.error(`Failed to sync calendar for request ${id}: ${err.message}`)
     })
 
+    const eventType: RequestEventType =
+      dto.action === 'ACCEPT'
+        ? 'ACCEPTED'
+        : dto.action === 'REJECT'
+          ? 'REJECTED'
+          : 'NEED_INFO'
+    this.sendRequestNotification(id, eventType, dto.reason).catch((err) => {
+      this.logger.error(`Failed to send triage email for ${id}: ${err.message}`)
+    })
+
     return updated
   }
 
@@ -756,6 +783,10 @@ export class RequestsService {
       actorId: user.userId,
       before: { status: 'NEED_INFO' },
       after: { status: 'SUBMITTED' },
+    })
+
+    this.sendRequestNotification(id, 'INFO_RESPONDED', dto.note).catch((err) => {
+      this.logger.error(`Failed to send info responded email for ${id}: ${err.message}`)
     })
 
     return updated
@@ -1039,6 +1070,10 @@ export class RequestsService {
       after: { status: 'DELIVERED', deliveryNotes: dto.deliveryNotes },
     })
 
+    this.sendRequestNotification(id, 'DELIVERED', dto.deliveryNotes).catch((err) => {
+      this.logger.error(`Failed to send deliver email for ${id}: ${err.message}`)
+    })
+
     return updated
   }
 
@@ -1118,6 +1153,12 @@ export class RequestsService {
 
     this.calendarService.syncRequestEvent(id).catch((err) => {
       this.logger.error(`Failed to sync calendar for request ${id}: ${err.message}`)
+    })
+
+    const eventType: RequestEventType =
+      dto.action === 'CONFIRM' ? 'CONFIRMED' : 'REVISION'
+    this.sendRequestNotification(id, eventType, dto.reason).catch((err) => {
+      this.logger.error(`Failed to send confirm/revision email for ${id}: ${err.message}`)
     })
 
     return updated
@@ -1307,6 +1348,14 @@ export class RequestsService {
       this.logger.error(`Failed to sync calendar for request ${id}: ${err.message}`)
     })
 
+    const eventType: RequestEventType =
+      newStatus === 'WAITING_ORIGIN_APPROVAL'
+        ? 'WAITING_ORIGIN_APPROVAL'
+        : 'NEW_REQUEST'
+    this.sendRequestNotification(id, eventType).catch((err) => {
+      this.logger.error(`Failed to send submit draft email for ${id}: ${err.message}`)
+    })
+
     return updated
   }
 
@@ -1417,5 +1466,112 @@ export class RequestsService {
         `Anda harus menjadi anggota divisi ini untuk ${actionDesc}.`,
       )
     }
+  }
+
+  private async sendRequestNotification(
+    requestId: string,
+    eventType: RequestEventType,
+    note?: string | null,
+  ): Promise<void> {
+    try {
+      const [row] = await this.db
+        .select({
+          id: requestsTable.id,
+          title: requestsTable.title,
+          fromDivisionId: requestsTable.fromDivisionId,
+          toDivisionId: requestsTable.toDivisionId,
+          deadline: requestsTable.deadline,
+          fromDivisionName: sql<string>`from_div.name`,
+          toDivisionName: sql<string>`to_div.name`,
+          requesterName: sql<string>`req_user.name`,
+          requesterEmail: sql<string>`req_user.email`,
+        })
+        .from(requestsTable)
+        .innerJoin(
+          sql`${divisionsTable} AS from_div`,
+          sql`from_div.id = ${requestsTable.fromDivisionId}`,
+        )
+        .innerJoin(
+          sql`${divisionsTable} AS to_div`,
+          sql`to_div.id = ${requestsTable.toDivisionId}`,
+        )
+        .innerJoin(
+          sql`${usersTable} AS req_user`,
+          sql`req_user.id = ${requestsTable.requesterId}`,
+        )
+        .where(eq(requestsTable.id, requestId))
+
+      if (!row) return
+
+      let recipients: { id?: string; name: string; email: string }[] = []
+
+      // Determine recipients
+      if (
+        eventType === 'NEED_INFO' ||
+        eventType === 'ACCEPTED' ||
+        eventType === 'REJECTED' ||
+        eventType === 'DELIVERED'
+      ) {
+        // Send to requester
+        recipients = [{ name: row.requesterName, email: row.requesterEmail }]
+      } else if (eventType === 'WAITING_ORIGIN_APPROVAL') {
+        // Send to origin division coordinators
+        recipients = await this.getDivisionCoordinatorsOrMembers(row.fromDivisionId)
+      } else {
+        // NEW_REQUEST, INFO_RESPONDED, REVISION, CONFIRMED -> send to target division coordinators
+        recipients = await this.getDivisionCoordinatorsOrMembers(row.toDivisionId)
+      }
+
+      await this.mailService.sendRequestEvent(recipients, {
+        id: row.id,
+        eventType,
+        requestTitle: row.title,
+        fromDivisionName: row.fromDivisionName,
+        toDivisionName: row.toDivisionName,
+        requesterName: row.requesterName,
+        deadline: row.deadline,
+        note,
+      })
+    } catch (err: any) {
+      this.logger.error(`Failed to send request event email for request ${requestId}: ${err.message}`)
+    }
+  }
+
+  private async getDivisionCoordinatorsOrMembers(
+    divisionId: string,
+  ): Promise<{ id: string; name: string; email: string }[]> {
+    const coords = await this.db
+      .select({
+        id: usersTable.id,
+        name: usersTable.name,
+        email: usersTable.email,
+      })
+      .from(divisionMembersTable)
+      .innerJoin(usersTable, eq(divisionMembersTable.userId, usersTable.id))
+      .where(
+        and(
+          eq(divisionMembersTable.divisionId, divisionId),
+          eq(divisionMembersTable.role, 'COORDINATOR'),
+          eq(usersTable.status, 'ACTIVE'),
+        ),
+      )
+
+    if (coords.length > 0) return coords
+
+    // Fallback to all members of the division
+    return this.db
+      .select({
+        id: usersTable.id,
+        name: usersTable.name,
+        email: usersTable.email,
+      })
+      .from(divisionMembersTable)
+      .innerJoin(usersTable, eq(divisionMembersTable.userId, usersTable.id))
+      .where(
+        and(
+          eq(divisionMembersTable.divisionId, divisionId),
+          eq(usersTable.status, 'ACTIVE'),
+        ),
+      )
   }
 }

@@ -25,6 +25,7 @@ import { ActivityLogsService } from '../activity-logs/activity-logs.service.js'
 import { CapacityService } from '../capacity/capacity.service.js'
 import { TaskTransitionService } from './task-transition.service.js'
 import { CalendarService } from '../calendar/calendar.service.js'
+import { MailService } from '../mail/mail.service.js'
 import type { RequestUser } from '../common/decorators/current-user.decorator.js'
 import type { CreateTaskDto } from './dto/create-task.dto.js'
 import type { UpdateTaskDto } from './dto/update-task.dto.js'
@@ -44,6 +45,7 @@ export class TasksService {
     private readonly taskTransitionService: TaskTransitionService,
     private readonly capacityService: CapacityService,
     private readonly calendarService: CalendarService,
+    private readonly mailService: MailService,
   ) {}
 
   // ─── 1. Ambil Seluruh Task dengan Filter ───────────────────────────────────
@@ -346,6 +348,13 @@ export class TasksService {
       this.logger.error(`Failed to sync calendar for created task ${taskId}: ${err.message}`)
     })
 
+    // Kirim notifikasi email penugasan jika task memiliki assignee
+    if (dto.assigneeId) {
+      this.sendTaskAssignedNotification(taskId, dto.assigneeId, user.userId).catch((err) => {
+        this.logger.error(`Failed to send task assigned email for task ${taskId}: ${err.message}`)
+      })
+    }
+
     return this.findOne(taskId)
   }
 
@@ -572,6 +581,13 @@ export class TasksService {
     this.calendarService.syncTaskEvent(id).catch((err) => {
       this.logger.error(`Failed to sync calendar for updated task ${id}: ${err.message}`)
     })
+
+    // Kirim notifikasi email jika assignee berubah
+    if (assigneeChanged && dto.assigneeId) {
+      this.sendTaskAssignedNotification(id, dto.assigneeId, user.userId).catch((err) => {
+        this.logger.error(`Failed to send task assigned email for task ${id}: ${err.message}`)
+      })
+    }
 
     return this.findOne(id)
   }
@@ -1089,6 +1105,54 @@ export class TasksService {
       IN_PROGRESS: tasks.filter((t) => t.status === 'IN_PROGRESS'),
       REVIEW: tasks.filter((t) => t.status === 'REVIEW'),
       DONE: tasks.filter((t) => t.status === 'DONE'),
+    }
+  }
+
+  private async sendTaskAssignedNotification(
+    taskId: string,
+    assigneeId: string,
+    assignerUserId: string,
+  ): Promise<void> {
+    if (!assigneeId || assigneeId === assignerUserId) return
+    try {
+      const [task] = await this.db
+        .select({
+          id: tasksTable.id,
+          title: tasksTable.title,
+          priority: tasksTable.priority,
+          dueDate: tasksTable.dueDate,
+          divisionName: divisionsTable.name,
+        })
+        .from(tasksTable)
+        .innerJoin(storiesTable, eq(tasksTable.storyId, storiesTable.id))
+        .leftJoin(divisionsTable, eq(storiesTable.divisionId, divisionsTable.id))
+        .where(eq(tasksTable.id, taskId))
+
+      const [assignee] = await this.db
+        .select({ name: usersTable.name, email: usersTable.email })
+        .from(usersTable)
+        .where(eq(usersTable.id, assigneeId))
+
+      const [assigner] = await this.db
+        .select({ name: usersTable.name })
+        .from(usersTable)
+        .where(eq(usersTable.id, assignerUserId))
+
+      if (task && assignee && assignee.email) {
+        await this.mailService.sendTaskAssigned(
+          assignee,
+          {
+            id: task.id,
+            title: task.title,
+            divisionName: task.divisionName ?? undefined,
+            priority: task.priority,
+            dueDate: task.dueDate,
+          },
+          assigner?.name ?? 'Koordinator',
+        )
+      }
+    } catch (err: any) {
+      this.logger.error(`Failed to send task assigned email for task ${taskId}: ${err.message}`)
     }
   }
 }

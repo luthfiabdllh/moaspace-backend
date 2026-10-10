@@ -4,7 +4,6 @@ import {
   ConflictException,
   Inject,
   Injectable,
-  Logger,
   NotFoundException,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
@@ -21,6 +20,7 @@ import {
   DATABASE_CONNECTION,
   type Database,
 } from '../database/database.provider.js'
+import { MailService } from '../mail/mail.service.js'
 import type { AddUserDivisionDto } from './dto/add-user-division.dto.js'
 import type { CreateUserDto } from './dto/create-user.dto.js'
 import type { MoveUserDivisionDto } from './dto/move-user-division.dto.js'
@@ -29,12 +29,11 @@ import type { UpdateUserGlobalRoleDto } from './dto/update-user-global-role.dto.
 
 @Injectable()
 export class UsersService {
-  private readonly logger = new Logger(UsersService.name)
-
   constructor(
     @Inject(DATABASE_CONNECTION) private readonly db: Database,
     private readonly activityLogsService: ActivityLogsService,
     private readonly configService: ConfigService,
+    private readonly mailService: MailService,
   ) {}
 
   private getFrontendUrl(): string {
@@ -123,7 +122,10 @@ export class UsersService {
     })
 
     const activationUrl = `${this.getFrontendUrl()}/activate?token=${rawToken}`
-    this.logger.log(`📧 [EMAIL SIMULATION] Link Aktivasi Anggota untuk ${email}: ${activationUrl}`)
+    await this.mailService.sendAccountActivation(
+      { email, name: dto.name.trim() },
+      activationUrl,
+    )
 
     return {
       success: true,
@@ -638,7 +640,10 @@ export class UsersService {
     })
 
     const activationUrl = `${this.getFrontendUrl()}/activate?token=${rawToken}`
-    this.logger.log(`📧 [EMAIL SIMULATION] Link Aktivasi Ulang untuk ${user.email}: ${activationUrl}`)
+    await this.mailService.sendAccountActivation(
+      { email: user.email, name: user.name },
+      activationUrl,
+    )
 
     return {
       success: true,
