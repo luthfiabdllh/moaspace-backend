@@ -2,6 +2,12 @@ import { boolean, pgEnum, pgTable, text, timestamp, varchar } from 'drizzle-orm/
 
 export const userStatusEnum = pgEnum('user_status', ['ACTIVE', 'INACTIVE'])
 export const tokenTypeEnum = pgEnum('token_type', ['ACTIVATION', 'RESET_PASSWORD'])
+export const academicClusterEnum = pgEnum('academic_cluster', [
+  'SAINTEK',
+  'SOSHUM',
+  'MEDIKA',
+  'AGRO',
+])
 
 export const usersTable = pgTable('users', {
   id: text('id').primaryKey(),
@@ -11,6 +17,8 @@ export const usersTable = pgTable('users', {
   googleId: varchar('google_id', { length: 255 }),
   isSuperAdmin: boolean('is_super_admin').notNull().default(false),
   isKormanit: boolean('is_kormanit').notNull().default(false),
+  cluster: academicClusterEnum('cluster'),
+  isClusterCoordinator: boolean('is_cluster_coordinator').notNull().default(false),
   status: userStatusEnum('status').notNull().default('ACTIVE'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true })

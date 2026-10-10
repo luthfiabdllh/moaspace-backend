@@ -76,11 +76,27 @@ describe('AnnouncementsService', () => {
           innerJoin: vi.fn().mockReturnValue({
             where: vi.fn().mockResolvedValue([{ divisionId: 'div-medkref', role: 'MEMBER', slug: 'media-kreatif' }]),
           }),
+          where: vi.fn().mockResolvedValue([]),
         }),
       })
 
       const result = await service.canManageAnnouncements(user)
       expect(result).toBe(false)
+    })
+
+    it('returns true for subunit coordinator (Kormasit)', async () => {
+      const user = { userId: 'kormasit-1', isSuperAdmin: false, isKormanit: false } as any
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          innerJoin: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([{ divisionId: 'div-medkref', role: 'MEMBER', slug: 'media-kreatif' }]),
+          }),
+          where: vi.fn().mockResolvedValue([{ id: 'sub-member-1' }]),
+        }),
+      })
+
+      const result = await service.canManageAnnouncements(user)
+      expect(result).toBe(true)
     })
   })
 
@@ -92,6 +108,7 @@ describe('AnnouncementsService', () => {
           innerJoin: vi.fn().mockReturnValue({
             where: vi.fn().mockResolvedValue([{ divisionId: 'div-medkref', role: 'MEMBER', slug: 'media-kreatif' }]),
           }),
+          where: vi.fn().mockResolvedValue([]),
         }),
       })
 

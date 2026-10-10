@@ -13,6 +13,8 @@ import {
   divisionMembersTable,
   divisionsTable,
   sessionsTable,
+  subunitMembersTable,
+  subunitsTable,
   usersTable,
 } from '@moaspace/database'
 import { and, desc, eq, isNull } from 'drizzle-orm'
@@ -28,6 +30,7 @@ import type { CreateUserDto } from './dto/create-user.dto.js'
 import type { MoveUserDivisionDto } from './dto/move-user-division.dto.js'
 import type { UpdateUserDivisionRoleDto } from './dto/update-user-division-role.dto.js'
 import type { UpdateUserGlobalRoleDto } from './dto/update-user-global-role.dto.js'
+import type { UpdateUserAcademicDto } from './dto/update-user-academic.dto.js'
 
 @Injectable()
 export class UsersService {
@@ -67,6 +70,24 @@ export class UsersService {
       throw new NotFoundException('Divisi yang dipilih tidak ditemukan.')
     }
 
+    // Verifikasi subunit jika dipilih
+    let selectedSubunit: { id: string; name: string; slug: string } | null = null
+    if (dto.subunitId) {
+      const [subunit] = await this.db
+        .select({
+          id: subunitsTable.id,
+          name: subunitsTable.name,
+          slug: subunitsTable.slug,
+        })
+        .from(subunitsTable)
+        .where(eq(subunitsTable.id, dto.subunitId))
+
+      if (!subunit) {
+        throw new NotFoundException('Subunit posko yang dipilih tidak ditemukan.')
+      }
+      selectedSubunit = subunit
+    }
+
     const isKormanit =
       dto.role === 'KORMANIT' || dto.role === 'KOORDINATOR_MAHASISWA_UNIT'
     const divisionRole: 'MEMBER' | 'COORDINATOR' =
@@ -86,6 +107,8 @@ export class UsersService {
         passwordHash: null,
         isSuperAdmin: false,
         isKormanit,
+        cluster: dto.cluster ?? null,
+        isClusterCoordinator: dto.isClusterCoordinator ?? false,
         status: 'ACTIVE',
       })
 
@@ -97,7 +120,17 @@ export class UsersService {
         role: divisionRole,
       })
 
-      // 3. Terbitkan Token Aktivasi
+      // 3. Hubungkan ke Subunit Posko jika dipilih
+      if (dto.subunitId) {
+        await tx.insert(subunitMembersTable).values({
+          id: crypto.randomUUID(),
+          userId,
+          subunitId: dto.subunitId,
+          role: dto.subunitRole ?? 'MEMBER',
+        })
+      }
+
+      // 4. Terbitkan Token Aktivasi
       await tx.insert(authTokensTable).values({
         id: crypto.randomUUID(),
         userId,
@@ -121,6 +154,10 @@ export class UsersService {
         divisionName: division.name,
         role: dto.role,
         isKormanit,
+        cluster: dto.cluster ?? null,
+        isClusterCoordinator: dto.isClusterCoordinator ?? false,
+        subunitId: dto.subunitId ?? null,
+        subunitName: selectedSubunit?.name ?? null,
       },
     })
 
@@ -139,11 +176,21 @@ export class UsersService {
         email,
         isSuperAdmin: false,
         isKormanit,
+        cluster: dto.cluster ?? null,
+        isClusterCoordinator: dto.isClusterCoordinator ?? false,
         status: 'ACTIVE',
         isActivated: false,
         divisionId: dto.divisionId,
         divisionName: division.name,
         role: dto.role,
+        subunit: selectedSubunit
+          ? {
+              id: selectedSubunit.id,
+              name: selectedSubunit.name,
+              slug: selectedSubunit.slug,
+              role: dto.subunitRole ?? 'MEMBER',
+            }
+          : null,
       },
       activationToken: rawToken,
       activationUrl,
@@ -159,6 +206,8 @@ export class UsersService {
         email: usersTable.email,
         isSuperAdmin: usersTable.isSuperAdmin,
         isKormanit: usersTable.isKormanit,
+        cluster: usersTable.cluster,
+        isClusterCoordinator: usersTable.isClusterCoordinator,
         status: usersTable.status,
         passwordHash: usersTable.passwordHash,
         googleId: usersTable.googleId,
@@ -187,17 +236,47 @@ export class UsersService {
       memberMap.set(m.userId, list)
     }
 
-    return users.map((u) => ({
-      id: u.id,
-      name: u.name,
-      email: u.email,
-      isSuperAdmin: u.isSuperAdmin,
-      isKormanit: u.isKormanit,
-      status: u.status,
-      isActivated: u.passwordHash !== null || u.googleId !== null,
-      createdAt: u.createdAt,
-      divisions: memberMap.get(u.id) || [],
-    }))
+    // Ambil seluruh membership subunit posko
+    const subunitMemberships = await this.db
+      .select({
+        userId: subunitMembersTable.userId,
+        subunitId: subunitMembersTable.subunitId,
+        role: subunitMembersTable.role,
+        subunitName: subunitsTable.name,
+        subunitSlug: subunitsTable.slug,
+      })
+      .from(subunitMembersTable)
+      .innerJoin(subunitsTable, eq(subunitMembersTable.subunitId, subunitsTable.id))
+
+    const subunitMap = new Map<string, (typeof subunitMemberships)[0]>()
+    for (const sm of subunitMemberships) {
+      subunitMap.set(sm.userId, sm)
+    }
+
+    return users.map((u) => {
+      const sub = subunitMap.get(u.id)
+      return {
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        isSuperAdmin: u.isSuperAdmin,
+        isKormanit: u.isKormanit,
+        cluster: u.cluster,
+        isClusterCoordinator: u.isClusterCoordinator,
+        status: u.status,
+        isActivated: u.passwordHash !== null || u.googleId !== null,
+        createdAt: u.createdAt,
+        divisions: memberMap.get(u.id) || [],
+        subunit: sub
+          ? {
+              id: sub.subunitId,
+              name: sub.subunitName,
+              slug: sub.subunitSlug,
+              role: sub.role,
+            }
+          : null,
+      }
+    })
   }
 
   // ─── 3. Super Admin & Koordinator Mahasiswa Unit: Ubah Status ───────────────
@@ -663,4 +742,99 @@ export class UsersService {
       activationUrl,
     }
   }
+
+  // ─── 10. Super Admin & Koordinator Mahasiswa Unit: Update Klaster & Subunit ─
+  async updateAcademic(
+    userId: string,
+    dto: UpdateUserAcademicDto,
+    actorId?: string,
+  ) {
+    const [user] = await this.db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
+
+    if (!user) {
+      throw new NotFoundException('Pengguna tidak ditemukan.')
+    }
+
+    const userUpdate: Partial<typeof usersTable.$inferInsert> = {}
+    if (dto.cluster !== undefined) userUpdate.cluster = dto.cluster
+    if (dto.isClusterCoordinator !== undefined) userUpdate.isClusterCoordinator = dto.isClusterCoordinator
+
+    if (Object.keys(userUpdate).length > 0) {
+      await this.db
+        .update(usersTable)
+        .set(userUpdate)
+        .where(eq(usersTable.id, userId))
+    }
+
+    if (dto.subunitId !== undefined) {
+      if (dto.subunitId === null) {
+        await this.db
+          .delete(subunitMembersTable)
+          .where(eq(subunitMembersTable.userId, userId))
+      } else {
+        const [subunit] = await this.db
+          .select({ id: subunitsTable.id, name: subunitsTable.name })
+          .from(subunitsTable)
+          .where(eq(subunitsTable.id, dto.subunitId))
+
+        if (!subunit) {
+          throw new NotFoundException('Subunit tidak ditemukan.')
+        }
+
+        const [existing] = await this.db
+          .select()
+          .from(subunitMembersTable)
+          .where(eq(subunitMembersTable.userId, userId))
+
+        const targetRole = dto.subunitRole ?? existing?.role ?? 'MEMBER'
+
+        if (existing) {
+          await this.db
+            .update(subunitMembersTable)
+            .set({ subunitId: dto.subunitId, role: targetRole })
+            .where(eq(subunitMembersTable.id, existing.id))
+        } else {
+          await this.db.insert(subunitMembersTable).values({
+            id: crypto.randomUUID(),
+            userId,
+            subunitId: dto.subunitId,
+            role: targetRole,
+          })
+        }
+      }
+    } else if (dto.subunitRole !== undefined) {
+      const [existing] = await this.db
+        .select()
+        .from(subunitMembersTable)
+        .where(eq(subunitMembersTable.userId, userId))
+
+      if (existing) {
+        await this.db
+          .update(subunitMembersTable)
+          .set({ role: dto.subunitRole })
+          .where(eq(subunitMembersTable.id, existing.id))
+      }
+    }
+
+    await this.activityLogsService.record({
+      entityType: 'USER',
+      entityId: userId,
+      action: 'STATUS_UPDATED',
+      actorId,
+      after: {
+        cluster: dto.cluster ?? user.cluster,
+        isClusterCoordinator: dto.isClusterCoordinator ?? user.isClusterCoordinator,
+        subunitId: dto.subunitId,
+      },
+    })
+
+    return {
+      success: true,
+      message: `Informasi klaster dan subunit untuk ${user.name} berhasil diperbarui.`,
+    }
+  }
 }
+

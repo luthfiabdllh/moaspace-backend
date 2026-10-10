@@ -27,6 +27,7 @@ import { MoveUserDivisionDto } from './dto/move-user-division.dto.js'
 import { UpdateUserDivisionRoleDto } from './dto/update-user-division-role.dto.js'
 import { UpdateUserGlobalRoleDto } from './dto/update-user-global-role.dto.js'
 import { UpdateUserStatusDto } from './dto/update-user-status.dto.js'
+import { UpdateUserAcademicDto } from './dto/update-user-academic.dto.js'
 import { UsersService } from './users.service.js'
 
 @ApiTags('Users')
@@ -183,4 +184,22 @@ export class UsersController {
   async resendActivation(@Param('id') id: string) {
     return this.usersService.resendActivation(id)
   }
+
+  @Patch(':id/academic')
+  @ApiOperation({
+    summary:
+      'Perbarui klaster, peran Kormater, atau subunit posko mahasiswa (Super Admin & Koordinator Mahasiswa Unit)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Informasi klaster dan subunit mahasiswa berhasil diperbarui',
+  })
+  async updateAcademic(
+    @Param('id') id: string,
+    @Body() dto: UpdateUserAcademicDto,
+    @CurrentUser() actor: RequestUser,
+  ) {
+    return this.usersService.updateAcademic(id, dto, actor?.userId)
+  }
 }
+

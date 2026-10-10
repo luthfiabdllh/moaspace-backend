@@ -12,6 +12,7 @@ import {
   announcementsTable,
   divisionMembersTable,
   divisionsTable,
+  subunitMembersTable,
   usersTable,
 } from '@moaspace/database'
 import { DATABASE_CONNECTION, type Database } from '../database/database.provider.js'
@@ -71,10 +72,29 @@ export class AnnouncementsService {
       .filter((m) => m.role === 'COORDINATOR')
       .map((m) => m.divisionId)
 
+    if (coordinatedDivisionIds.length > 0) {
+      return {
+        canCreate: true,
+        isGlobalManager: false,
+        coordinatedDivisionIds,
+      }
+    }
+
+    // Cek apakah pengguna merupakan Koordinator Subunit (Kormasit)
+    const isSubunitCoordinator = await this.db
+      .select({ id: subunitMembersTable.id })
+      .from(subunitMembersTable)
+      .where(
+        and(
+          eq(subunitMembersTable.userId, user.userId),
+          eq(subunitMembersTable.role, 'COORDINATOR'),
+        ),
+      )
+
     return {
-      canCreate: coordinatedDivisionIds.length > 0,
+      canCreate: isSubunitCoordinator.length > 0,
       isGlobalManager: false,
-      coordinatedDivisionIds,
+      coordinatedDivisionIds: [],
     }
   }
 

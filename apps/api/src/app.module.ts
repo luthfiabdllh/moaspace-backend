@@ -21,6 +21,7 @@ import { CalendarModule } from './calendar/calendar.module.js'
 import { AnnouncementsModule } from './announcements/announcements.module.js'
 import { MailModule } from './mail/mail.module.js'
 import { SchedulerModule } from './scheduler/scheduler.module.js'
+import { SubunitsModule } from './subunits/subunits.module.js'
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { SchedulerModule } from './scheduler/scheduler.module.js'
     DatabaseModule,
     AuthModule,
     DivisionsModule,
+    SubunitsModule,
     UsersModule,
     ActivityLogsModule,
     EpicsModule,
