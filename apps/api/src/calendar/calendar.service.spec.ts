@@ -80,4 +80,72 @@ describe('CalendarService', () => {
       })
     })
   })
+
+  describe('inactive user safeguards', () => {
+    it('rejects handleCallback for inactive user', async () => {
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([{ status: 'INACTIVE' }]),
+          }),
+        }),
+      })
+
+      await expect(
+        service.handleCallback('user-inactive', 'sample-code'),
+      ).rejects.toThrow('Akun nonaktif tidak dapat mengintegrasikan Google Calendar.')
+    })
+
+    it('cleans up integration and calendar events on handleUserDeactivation', async () => {
+      const mockIntegration = {
+        id: 'int-1',
+        userId: 'user-inactive',
+        calendarId: 'cal-1',
+        googleRefreshToken: 'token-1',
+      }
+      const mockEvents = [
+        {
+          id: 'event-1',
+          userId: 'user-inactive',
+          calendarId: 'cal-1',
+          googleEventId: 'g-event-1',
+        },
+      ]
+
+      db.select
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([mockIntegration]),
+            }),
+          }),
+        })
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue(mockEvents),
+          }),
+        })
+
+      db.update.mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue({}),
+        }),
+      })
+
+      db.delete.mockReturnValue({
+        where: vi.fn().mockResolvedValue({}),
+      })
+
+      // Mock deleteGoogleEvent private call
+      const deleteGoogleEventSpy = vi
+        .spyOn(service as any, 'deleteGoogleEvent')
+        .mockResolvedValue(undefined)
+
+      await service.handleUserDeactivation('user-inactive')
+
+      expect(deleteGoogleEventSpy).toHaveBeenCalledWith('user-inactive', 'cal-1', 'g-event-1')
+      expect(db.update).toHaveBeenCalled()
+      expect(db.delete).toHaveBeenCalled()
+    })
+  })
 })

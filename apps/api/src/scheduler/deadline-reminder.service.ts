@@ -68,6 +68,7 @@ export class DeadlineReminderService {
             ne(tasksTable.status, 'DONE'),
             isNotNull(tasksTable.dueDate),
             isNotNull(tasksTable.assigneeId),
+            eq(usersTable.status, 'ACTIVE'),
           ),
         )
 

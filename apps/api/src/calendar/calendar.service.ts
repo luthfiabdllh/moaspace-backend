@@ -16,6 +16,7 @@ import {
   requestsTable,
   tasksTable,
   userCalendarIntegrationsTable,
+  usersTable,
 } from '@moaspace/database'
 import { DATABASE_CONNECTION, type Database } from '../database/database.provider.js'
 
@@ -66,6 +67,16 @@ export class CalendarService {
 
   // ─── 2. Handle Callback ───────────────────────────────────────────────────
   async handleCallback(userId: string, code: string, redirectUri?: string) {
+    const [user] = await this.db
+      .select({ status: usersTable.status })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
+      .limit(1)
+
+    if (!user || user.status !== 'ACTIVE') {
+      throw new BadRequestException('Akun nonaktif tidak dapat mengintegrasikan Google Calendar.')
+    }
+
     const client = this.createOAuth2Client(redirectUri)
     const { tokens } = await client.getToken(code)
 
@@ -158,6 +169,16 @@ export class CalendarService {
 
   // ─── 4. Toggle Sync ────────────────────────────────────────────────────────
   async toggleSync(userId: string, enabled: boolean) {
+    const [user] = await this.db
+      .select({ status: usersTable.status })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
+      .limit(1)
+
+    if (!user || user.status !== 'ACTIVE') {
+      throw new BadRequestException('Akun nonaktif tidak dapat mengubah sinkronisasi Google Calendar.')
+    }
+
     const [integration] = await this.db
       .select()
       .from(userCalendarIntegrationsTable)
@@ -287,6 +308,23 @@ export class CalendarService {
             .delete(calendarEventsTable)
             .where(eq(calendarEventsTable.id, record.id))
         }
+      }
+
+      // Check if current assignee is active
+      const [assigneeUser] = await this.db
+        .select({ id: usersTable.id, status: usersTable.status })
+        .from(usersTable)
+        .where(eq(usersTable.id, task.assigneeId))
+        .limit(1)
+
+      if (!assigneeUser || assigneeUser.status !== 'ACTIVE') {
+        for (const record of existingRecords) {
+          await this.deleteGoogleEvent(record.userId, record.calendarId, record.googleEventId)
+          await this.db
+            .delete(calendarEventsTable)
+            .where(eq(calendarEventsTable.id, record.id))
+        }
+        return
       }
 
       // Check if current assignee has active calendar sync
@@ -433,20 +471,35 @@ export class CalendarService {
         return
       }
 
-      // Find coordinators of destination division
+      // Find active coordinators of destination division
       const coordinators = await this.db
         .select({ userId: divisionMembersTable.userId })
         .from(divisionMembersTable)
+        .innerJoin(usersTable, eq(divisionMembersTable.userId, usersTable.id))
         .where(
           and(
             eq(divisionMembersTable.divisionId, request.toDivisionId),
             eq(divisionMembersTable.role, 'COORDINATOR'),
+            eq(usersTable.status, 'ACTIVE'),
           ),
         )
 
-      const targetUserIds = Array.from(
-        new Set([request.requesterId, ...coordinators.map((c) => c.userId)]),
-      )
+      // Check if requester is active
+      const [requester] = await this.db
+        .select({ id: usersTable.id, status: usersTable.status })
+        .from(usersTable)
+        .where(eq(usersTable.id, request.requesterId))
+        .limit(1)
+
+      const activeUserIds: string[] = []
+      if (requester && requester.status === 'ACTIVE') {
+        activeUserIds.push(requester.id)
+      }
+      for (const c of coordinators) {
+        activeUserIds.push(c.userId)
+      }
+
+      const targetUserIds = Array.from(new Set(activeUserIds))
 
       // Clean up records for users no longer in target set
       for (const record of existingRecords) {
@@ -625,7 +678,13 @@ export class CalendarService {
             googleRefreshToken: userCalendarIntegrationsTable.googleRefreshToken,
           })
           .from(userCalendarIntegrationsTable)
-          .where(eq(userCalendarIntegrationsTable.syncEnabled, true))
+          .innerJoin(usersTable, eq(userCalendarIntegrationsTable.userId, usersTable.id))
+          .where(
+            and(
+              eq(userCalendarIntegrationsTable.syncEnabled, true),
+              eq(usersTable.status, 'ACTIVE'),
+            ),
+          )
       } else if (announcement.targetType === 'DIVISION' && announcement.targetDivisionId) {
         targetUserIntegrations = await this.db
           .select({
@@ -638,10 +697,12 @@ export class CalendarService {
             divisionMembersTable,
             eq(userCalendarIntegrationsTable.userId, divisionMembersTable.userId),
           )
+          .innerJoin(usersTable, eq(userCalendarIntegrationsTable.userId, usersTable.id))
           .where(
             and(
               eq(divisionMembersTable.divisionId, announcement.targetDivisionId),
               eq(userCalendarIntegrationsTable.syncEnabled, true),
+              eq(usersTable.status, 'ACTIVE'),
             ),
           )
       }
@@ -806,6 +867,16 @@ export class CalendarService {
 
   // ─── 9. Sync All User Items (Initial or Full Sync) ──────────────────────────
   async syncAllUserItems(userId: string): Promise<void> {
+    const [user] = await this.db
+      .select({ id: usersTable.id, status: usersTable.status })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
+      .limit(1)
+
+    if (!user || user.status !== 'ACTIVE') {
+      return
+    }
+
     // 1. Sync tasks where user is assignee and dueDate is not null
     const userTasks = await this.db
       .select({ id: tasksTable.id })
@@ -872,6 +943,42 @@ export class CalendarService {
       ) {
         await this.syncAnnouncementEvent(a.id)
       }
+    }
+  }
+
+  // ─── 10. Handle User Deactivation (Clean up Calendar) ──────────────────────
+  async handleUserDeactivation(userId: string): Promise<void> {
+    try {
+      const [integration] = await this.db
+        .select()
+        .from(userCalendarIntegrationsTable)
+        .where(eq(userCalendarIntegrationsTable.userId, userId))
+        .limit(1)
+
+      const userEvents = await this.db
+        .select()
+        .from(calendarEventsTable)
+        .where(eq(calendarEventsTable.userId, userId))
+
+      if (integration) {
+        for (const record of userEvents) {
+          await this.deleteGoogleEvent(record.userId, record.calendarId, record.googleEventId)
+        }
+
+        await this.db
+          .update(userCalendarIntegrationsTable)
+          .set({ syncEnabled: false, updatedAt: new Date() })
+          .where(eq(userCalendarIntegrationsTable.id, integration.id))
+      }
+
+      await this.db
+        .delete(calendarEventsTable)
+        .where(eq(calendarEventsTable.userId, userId))
+    } catch (err: any) {
+      this.logger.error(
+        `Failed to cleanup calendar for deactivated user ${userId}: ${err.message}`,
+        err.stack,
+      )
     }
   }
 }

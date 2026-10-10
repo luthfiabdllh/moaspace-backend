@@ -1485,6 +1485,7 @@ export class RequestsService {
           toDivisionName: sql<string>`to_div.name`,
           requesterName: sql<string>`req_user.name`,
           requesterEmail: sql<string>`req_user.email`,
+          requesterStatus: sql<string>`req_user.status`,
         })
         .from(requestsTable)
         .innerJoin(
@@ -1512,8 +1513,10 @@ export class RequestsService {
         eventType === 'REJECTED' ||
         eventType === 'DELIVERED'
       ) {
-        // Send to requester
-        recipients = [{ name: row.requesterName, email: row.requesterEmail }]
+        // Send to requester only if account is active
+        if (row.requesterStatus === 'ACTIVE') {
+          recipients = [{ name: row.requesterName, email: row.requesterEmail }]
+        }
       } else if (eventType === 'WAITING_ORIGIN_APPROVAL') {
         // Send to origin division coordinators
         recipients = await this.getDivisionCoordinatorsOrMembers(row.fromDivisionId)

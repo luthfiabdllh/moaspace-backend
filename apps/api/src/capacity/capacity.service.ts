@@ -177,7 +177,13 @@ export class CapacityService {
         userId: divisionMembersTable.userId,
       })
       .from(divisionMembersTable)
-      .where(eq(divisionMembersTable.divisionId, divisionId))
+      .innerJoin(usersTable, eq(divisionMembersTable.userId, usersTable.id))
+      .where(
+        and(
+          eq(divisionMembersTable.divisionId, divisionId),
+          eq(usersTable.status, 'ACTIVE'),
+        ),
+      )
 
     const monday = weekStart || this.getCurrentWeekStart()
 

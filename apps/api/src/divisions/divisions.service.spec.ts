@@ -61,7 +61,9 @@ describe('DivisionsService', () => {
         })
         .mockReturnValueOnce({
           from: vi.fn().mockReturnValue({
-            innerJoin: vi.fn().mockResolvedValue(mockMembers),
+            innerJoin: vi.fn().mockReturnValue({
+              where: vi.fn().mockResolvedValue(mockMembers),
+            }),
           }),
         })
 

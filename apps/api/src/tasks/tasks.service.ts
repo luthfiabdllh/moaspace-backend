@@ -248,6 +248,20 @@ export class TasksService {
       }
     }
 
+    // Validasi akun assignee jika ditugaskan
+    if (dto.assigneeId) {
+      const [assigneeUser] = await this.db
+        .select({ id: usersTable.id, status: usersTable.status })
+        .from(usersTable)
+        .where(eq(usersTable.id, dto.assigneeId))
+
+      if (!assigneeUser || assigneeUser.status !== 'ACTIVE') {
+        throw new BadRequestException(
+          'Pengguna yang dipilih tidak aktif atau dinonaktifkan sehingga tidak dapat ditugaskan.',
+        )
+      }
+    }
+
     // Cek Overcapacity jika task aktif ditugaskan ke anggota
     let isOvercapacity = false
     let overcapacityUtilization = 0
@@ -454,6 +468,20 @@ export class TasksService {
       dto.assigneeId !== undefined &&
       dto.assigneeId !== null &&
       dto.assigneeId !== existing.assigneeId
+
+    // Validasi akun assignee jika diubah ke pengguna tertentu
+    if (assigneeChanged && dto.assigneeId) {
+      const [assigneeUser] = await this.db
+        .select({ id: usersTable.id, status: usersTable.status })
+        .from(usersTable)
+        .where(eq(usersTable.id, dto.assigneeId))
+
+      if (!assigneeUser || assigneeUser.status !== 'ACTIVE') {
+        throw new BadRequestException(
+          'Pengguna yang dipilih tidak aktif atau dinonaktifkan sehingga tidak dapat ditugaskan.',
+        )
+      }
+    }
     const wasActiveForCapacity = ACTIVE_CAPACITY_STATUSES.includes(existing.status)
     const willBeActiveForCapacity = ACTIVE_CAPACITY_STATUSES.includes(targetStatus)
 
@@ -1131,7 +1159,12 @@ export class TasksService {
       const [assignee] = await this.db
         .select({ name: usersTable.name, email: usersTable.email })
         .from(usersTable)
-        .where(eq(usersTable.id, assigneeId))
+        .where(
+          and(
+            eq(usersTable.id, assigneeId),
+            eq(usersTable.status, 'ACTIVE'),
+          ),
+        )
 
       const [assigner] = await this.db
         .select({ name: usersTable.name })

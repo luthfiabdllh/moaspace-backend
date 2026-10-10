@@ -299,4 +299,18 @@ describe('UsersService', () => {
       )
     })
   })
+
+  describe('resendActivation', () => {
+    it('should throw BadRequestException if user is inactive', async () => {
+      mockDb.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{ id: 'user-1', status: 'INACTIVE', passwordHash: null }]),
+        }),
+      })
+
+      await expect(usersService.resendActivation('user-1')).rejects.toThrow(
+        'Akun dalam status nonaktif dan tidak dapat dikirimkan tautan aktivasi.',
+      )
+    })
+  })
 })

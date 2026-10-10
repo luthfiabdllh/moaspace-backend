@@ -143,6 +143,11 @@ describe('TasksService', () => {
             where: vi.fn().mockResolvedValue([{ role: 'MEMBER' }]),
           }),
         })
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([{ id: 'user-member', status: 'ACTIVE' }]),
+          }),
+        })
 
       // Current active = 8, capacity = 10, adding 5 SP -> 13/10 = 130%
       mockCapacityService.getUserUtilization.mockResolvedValueOnce({
@@ -165,6 +170,45 @@ describe('TasksService', () => {
           member,
         ),
       ).rejects.toThrow(ConflictException)
+    })
+
+    it('should throw BadRequestException if assignee is inactive', async () => {
+      const member = {
+        userId: 'user-member',
+        email: 'member@moaspace.com',
+        isSuperAdmin: false,
+        isKormanit: false,
+      }
+
+      mockDb.select
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([{ id: 'story-1', divisionId: 'div-1' }]),
+          }),
+        })
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([{ role: 'MEMBER' }]),
+          }),
+        })
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([{ id: 'user-inactive', status: 'INACTIVE' }]),
+          }),
+        })
+
+      await expect(
+        service.create(
+          {
+            storyId: 'story-1',
+            title: 'Buat Feed IG',
+            status: 'TODO',
+            assigneeId: 'user-inactive',
+            storyPoints: 3,
+          },
+          member,
+        ),
+      ).rejects.toThrow(BadRequestException)
     })
 
     it('should allow division member to create task', async () => {

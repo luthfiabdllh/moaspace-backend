@@ -49,6 +49,7 @@ export class DivisionsService {
       })
       .from(divisionMembersTable)
       .innerJoin(usersTable, eq(divisionMembersTable.userId, usersTable.id))
+      .where(eq(usersTable.status, 'ACTIVE'))
 
     return divisions.map((div) => {
       const divMembers = allMembers.filter((m) => m.divisionId === div.id)
@@ -97,7 +98,12 @@ export class DivisionsService {
       })
       .from(divisionMembersTable)
       .innerJoin(usersTable, eq(divisionMembersTable.userId, usersTable.id))
-      .where(eq(divisionMembersTable.divisionId, division.id))
+      .where(
+        and(
+          eq(divisionMembersTable.divisionId, division.id),
+          eq(usersTable.status, 'ACTIVE'),
+        ),
+      )
       .orderBy(asc(usersTable.name))
 
     return {

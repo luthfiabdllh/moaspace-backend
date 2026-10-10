@@ -5,6 +5,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import {
@@ -21,6 +22,7 @@ import {
   type Database,
 } from '../database/database.provider.js'
 import { MailService } from '../mail/mail.service.js'
+import { CalendarService } from '../calendar/calendar.service.js'
 import type { AddUserDivisionDto } from './dto/add-user-division.dto.js'
 import type { CreateUserDto } from './dto/create-user.dto.js'
 import type { MoveUserDivisionDto } from './dto/move-user-division.dto.js'
@@ -34,6 +36,7 @@ export class UsersService {
     private readonly activityLogsService: ActivityLogsService,
     private readonly configService: ConfigService,
     private readonly mailService: MailService,
+    @Optional() private readonly calendarService?: CalendarService,
   ) {}
 
   private getFrontendUrl(): string {
@@ -221,12 +224,16 @@ export class UsersService {
       .set({ status })
       .where(eq(usersTable.id, userId))
 
-    // PRD: Akun nonaktif dicabut semua sesinya
+    // PRD: Akun nonaktif dicabut semua sesinya dan dibersihkan dari integrasi Google Calendar
     if (status === 'INACTIVE') {
       await this.db
         .update(sessionsTable)
         .set({ revokedAt: new Date() })
         .where(and(eq(sessionsTable.userId, userId), isNull(sessionsTable.revokedAt)))
+
+      if (this.calendarService) {
+        await this.calendarService.handleUserDeactivation(userId)
+      }
     }
 
     await this.activityLogsService.record({
@@ -621,6 +628,10 @@ export class UsersService {
 
     if (!user) {
       throw new NotFoundException('Pengguna tidak ditemukan.')
+    }
+
+    if (user.status !== 'ACTIVE') {
+      throw new BadRequestException('Akun dalam status nonaktif dan tidak dapat dikirimkan tautan aktivasi.')
     }
 
     if (user.passwordHash !== null) {
