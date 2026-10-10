@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common'
 import { and, desc, eq, ilike, inArray, or } from 'drizzle-orm'
 import {
+  divisionsTable,
   epicsTable,
   programMembersTable,
   programsTable,
@@ -245,19 +246,23 @@ export class ProgramsService {
       throw new NotFoundException('Program kerja tidak ditemukan.')
     }
 
-    // Ambil rincian epics yang tertaut
+    // Ambil rincian epics yang tertaut beserta nama divisi pemilik
     const epics = await this.db
       .select({
         id: epicsTable.id,
         title: epicsTable.title,
         description: epicsTable.description,
         scope: epicsTable.scope,
+        prokerTag: epicsTable.prokerTag,
+        ownerDivisionId: epicsTable.ownerDivisionId,
+        ownerDivisionName: divisionsTable.name,
         startDate: epicsTable.startDate,
         endDate: epicsTable.endDate,
         closedAt: epicsTable.closedAt,
         createdAt: epicsTable.createdAt,
       })
       .from(epicsTable)
+      .leftJoin(divisionsTable, eq(epicsTable.ownerDivisionId, divisionsTable.id))
       .where(eq(epicsTable.programId, id))
       .orderBy(desc(epicsTable.createdAt))
 
