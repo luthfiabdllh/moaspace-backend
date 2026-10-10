@@ -18,6 +18,7 @@ import { CapacityModule } from './capacity/capacity.module.js'
 import { RequestsModule } from './requests/requests.module.js'
 import { UploadsModule } from './uploads/uploads.module.js'
 import { CalendarModule } from './calendar/calendar.module.js'
+import { AnnouncementsModule } from './announcements/announcements.module.js'
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { CalendarModule } from './calendar/calendar.module.js'
     RequestsModule,
     UploadsModule,
     CalendarModule,
+    AnnouncementsModule,
   ],
   controllers: [AppController],
   providers: [

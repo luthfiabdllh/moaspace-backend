@@ -10,6 +10,7 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { OAuth2Client } from 'google-auth-library'
 import { randomUUID } from 'node:crypto'
 import {
+  announcementsTable,
   calendarEventsTable,
   divisionMembersTable,
   requestsTable,
@@ -583,6 +584,196 @@ export class CalendarService {
     }
   }
 
+  // ─── 8. Sync Announcement Event ────────────────────────────────────────────
+  async syncAnnouncementEvent(announcementId: string, isDelete = false): Promise<void> {
+    try {
+      const [announcement] = await this.db
+        .select()
+        .from(announcementsTable)
+        .where(eq(announcementsTable.id, announcementId))
+        .limit(1)
+
+      const existingRecords = await this.db
+        .select()
+        .from(calendarEventsTable)
+        .where(
+          and(
+            eq(calendarEventsTable.entityType, 'ANNOUNCEMENT'),
+            eq(calendarEventsTable.entityId, announcementId),
+          ),
+        )
+
+      // If deleted, missing, or no eventStartDate:
+      if (isDelete || !announcement || !announcement.eventStartDate) {
+        for (const record of existingRecords) {
+          await this.deleteGoogleEvent(record.userId, record.calendarId, record.googleEventId)
+          await this.db
+            .delete(calendarEventsTable)
+            .where(eq(calendarEventsTable.id, record.id))
+        }
+        return
+      }
+
+      // Determine target users with active calendar integration
+      let targetUserIntegrations: { userId: string; calendarId: string; googleRefreshToken: string }[] = []
+
+      if (announcement.targetType === 'ALL') {
+        targetUserIntegrations = await this.db
+          .select({
+            userId: userCalendarIntegrationsTable.userId,
+            calendarId: userCalendarIntegrationsTable.calendarId,
+            googleRefreshToken: userCalendarIntegrationsTable.googleRefreshToken,
+          })
+          .from(userCalendarIntegrationsTable)
+          .where(eq(userCalendarIntegrationsTable.syncEnabled, true))
+      } else if (announcement.targetType === 'DIVISION' && announcement.targetDivisionId) {
+        targetUserIntegrations = await this.db
+          .select({
+            userId: userCalendarIntegrationsTable.userId,
+            calendarId: userCalendarIntegrationsTable.calendarId,
+            googleRefreshToken: userCalendarIntegrationsTable.googleRefreshToken,
+          })
+          .from(userCalendarIntegrationsTable)
+          .innerJoin(
+            divisionMembersTable,
+            eq(userCalendarIntegrationsTable.userId, divisionMembersTable.userId),
+          )
+          .where(
+            and(
+              eq(divisionMembersTable.divisionId, announcement.targetDivisionId),
+              eq(userCalendarIntegrationsTable.syncEnabled, true),
+            ),
+          )
+      }
+
+      const targetUserIds = targetUserIntegrations.map((u) => u.userId)
+
+      // Clean up records for users who are no longer target
+      for (const record of existingRecords) {
+        if (!targetUserIds.includes(record.userId)) {
+          await this.deleteGoogleEvent(record.userId, record.calendarId, record.googleEventId)
+          await this.db
+            .delete(calendarEventsTable)
+            .where(eq(calendarEventsTable.id, record.id))
+        }
+      }
+
+      // Determine category prefix
+      let categoryPrefix = '[PENGUMUMAN]'
+      if (announcement.category === 'MEETING') categoryPrefix = '[RAPAT]'
+      else if (announcement.category === 'URGENT') categoryPrefix = '[PENTING]'
+      else if (announcement.category === 'ACTIVITY') categoryPrefix = '[KEGIATAN]'
+
+      const summary = `${categoryPrefix} ${announcement.title}`
+      const start = new Date(announcement.eventStartDate)
+      const end = announcement.eventEndDate
+        ? new Date(announcement.eventEndDate)
+        : new Date(start.getTime() + 60 * 60 * 1000)
+
+      const description = [
+        `Pengumuman MoaSpace: ${announcement.title}`,
+        `Kategori: ${announcement.category}`,
+        announcement.location ? `Lokasi: ${announcement.location}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n')
+
+      const eventPayload = {
+        summary,
+        description,
+        location: announcement.location || undefined,
+        start: {
+          dateTime: start.toISOString(),
+          timeZone: 'Asia/Jakarta',
+        },
+        end: {
+          dateTime: end.toISOString(),
+          timeZone: 'Asia/Jakarta',
+        },
+        reminders: {
+          useDefault: false,
+          overrides: [
+            { method: 'popup', minutes: 1440 }, // 24 hours before
+            { method: 'popup', minutes: 60 },   // 1 hour before
+          ],
+        },
+      }
+
+      for (const target of targetUserIntegrations) {
+        const client = this.getClientForUser(target.googleRefreshToken)
+        const currentRecord = existingRecords.find((r) => r.userId === target.userId)
+
+        if (currentRecord) {
+          try {
+            await client.request({
+              url: `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(
+                target.calendarId,
+              )}/events/${encodeURIComponent(currentRecord.googleEventId)}`,
+              method: 'PATCH',
+              data: eventPayload,
+            })
+
+            await this.db
+              .update(calendarEventsTable)
+              .set({ lastSyncedAt: new Date() })
+              .where(eq(calendarEventsTable.id, currentRecord.id))
+          } catch (patchErr: any) {
+            if (patchErr.status === 404 || patchErr.status === 410) {
+              const createRes = await client.request<{ id: string }>({
+                url: `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(
+                  target.calendarId,
+                )}/events`,
+                method: 'POST',
+                data: eventPayload,
+              })
+
+              await this.db
+                .update(calendarEventsTable)
+                .set({
+                  googleEventId: createRes.data.id,
+                  lastSyncedAt: new Date(),
+                })
+                .where(eq(calendarEventsTable.id, currentRecord.id))
+            } else {
+              this.logger.error(
+                `Failed to patch announcement event for user ${target.userId}: ${patchErr.message}`,
+              )
+            }
+          }
+        } else {
+          try {
+            const createRes = await client.request<{ id: string }>({
+              url: `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(
+                target.calendarId,
+              )}/events`,
+              method: 'POST',
+              data: eventPayload,
+            })
+
+            await this.db.insert(calendarEventsTable).values({
+              id: randomUUID(),
+              userId: target.userId,
+              entityType: 'ANNOUNCEMENT',
+              entityId: announcementId,
+              googleEventId: createRes.data.id,
+              calendarId: target.calendarId,
+              lastSyncedAt: new Date(),
+            })
+          } catch (createErr: any) {
+            this.logger.error(
+              `Failed to create announcement event for user ${target.userId}: ${createErr.message}`,
+            )
+          }
+        }
+      }
+    } catch (err: any) {
+      this.logger.error(
+        `Error syncing announcement ${announcementId} to Google Calendar: ${err.message}`,
+        err.stack,
+      )
+    }
+  }
+
   // ─── Helper: Delete Google Event ───────────────────────────────────────────
   private async deleteGoogleEvent(
     userId: string,
@@ -613,7 +804,7 @@ export class CalendarService {
     }
   }
 
-  // ─── 8. Sync All User Items (Initial or Full Sync) ──────────────────────────
+  // ─── 9. Sync All User Items (Initial or Full Sync) ──────────────────────────
   async syncAllUserItems(userId: string): Promise<void> {
     // 1. Sync tasks where user is assignee and dueDate is not null
     const userTasks = await this.db
@@ -655,6 +846,31 @@ export class CalendarService {
 
       for (const r of coordRequests) {
         await this.syncRequestEvent(r.id)
+      }
+    }
+
+    // 4. Sync announcements where targetType = 'ALL' or user's division is target
+    const userDivisions = await this.db
+      .select({ divisionId: divisionMembersTable.divisionId })
+      .from(divisionMembersTable)
+      .where(eq(divisionMembersTable.userId, userId))
+
+    const userDivisionIds = userDivisions.map((d) => d.divisionId)
+
+    const allAnnouncements = await this.db
+      .select({
+        id: announcementsTable.id,
+        targetType: announcementsTable.targetType,
+        targetDivisionId: announcementsTable.targetDivisionId,
+      })
+      .from(announcementsTable)
+
+    for (const a of allAnnouncements) {
+      if (
+        a.targetType === 'ALL' ||
+        (a.targetDivisionId && userDivisionIds.includes(a.targetDivisionId))
+      ) {
+        await this.syncAnnouncementEvent(a.id)
       }
     }
   }

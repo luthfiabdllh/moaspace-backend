@@ -1,0 +1,353 @@
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common'
+import { and, desc, eq, ilike, inArray, or } from 'drizzle-orm'
+import { randomUUID } from 'node:crypto'
+import {
+  announcementsTable,
+  divisionMembersTable,
+  divisionsTable,
+  usersTable,
+} from '@moaspace/database'
+import { DATABASE_CONNECTION, type Database } from '../database/database.provider.js'
+import { ActivityLogsService } from '../activity-logs/activity-logs.service.js'
+import { CalendarService } from '../calendar/calendar.service.js'
+import type { RequestUser } from '../common/decorators/current-user.decorator.js'
+import type { CreateAnnouncementDto } from './dto/create-announcement.dto.js'
+import type { UpdateAnnouncementDto } from './dto/update-announcement.dto.js'
+import type { QueryAnnouncementsDto } from './dto/query-announcements.dto.js'
+
+@Injectable()
+export class AnnouncementsService {
+  private readonly logger = new Logger(AnnouncementsService.name)
+
+  constructor(
+    @Inject(DATABASE_CONNECTION) private readonly db: Database,
+    private readonly activityLogsService: ActivityLogsService,
+    private readonly calendarService: CalendarService,
+  ) {}
+
+  // ─── 1. Cek Hak Akses Pembuatan (PSDM / Kormanit / Admin) ─────────────────
+  async canManageAnnouncements(user: RequestUser): Promise<boolean> {
+    if (user.isSuperAdmin || user.isKormanit) {
+      return true
+    }
+
+    const memberships = await this.db
+      .select({ slug: divisionsTable.slug })
+      .from(divisionMembersTable)
+      .innerJoin(divisionsTable, eq(divisionMembersTable.divisionId, divisionsTable.id))
+      .where(eq(divisionMembersTable.userId, user.userId))
+
+    return memberships.some((m) => m.slug.toLowerCase() === 'psdm')
+  }
+
+  // ─── 2. Buat Pengumuman ────────────────────────────────────────────────────
+  async create(dto: CreateAnnouncementDto, user: RequestUser) {
+    const isAllowed = await this.canManageAnnouncements(user)
+    if (!isAllowed) {
+      throw new ForbiddenException(
+        'Hanya divisi PSDM, Kormanit, atau Super Admin yang dapat membuat pengumuman.',
+      )
+    }
+
+    if (dto.targetType === 'DIVISION' && !dto.targetDivisionId) {
+      throw new BadRequestException('Target divisi wajib dipilih jika target type DIVISION.')
+    }
+
+    const announcementId = randomUUID()
+    const startDate = dto.eventStartDate ? new Date(dto.eventStartDate) : null
+    const endDate = dto.eventEndDate ? new Date(dto.eventEndDate) : null
+
+    if (startDate && endDate && endDate < startDate) {
+      throw new BadRequestException('Waktu selesai agenda tidak boleh lebih awal dari waktu mulai.')
+    }
+
+    const [created] = await this.db
+      .insert(announcementsTable)
+      .values({
+        id: announcementId,
+        title: dto.title.trim(),
+        content: dto.content,
+        category: dto.category || 'INFO',
+        targetType: dto.targetType || 'ALL',
+        targetDivisionId: dto.targetType === 'DIVISION' ? dto.targetDivisionId || null : null,
+        isPinned: dto.isPinned ?? false,
+        eventStartDate: startDate,
+        eventEndDate: endDate,
+        location: dto.location || null,
+        authorId: user.userId,
+      })
+      .returning()
+
+    if (!created) {
+      throw new BadRequestException('Gagal membuat pengumuman.')
+    }
+
+    await this.activityLogsService.record({
+      entityType: 'ANNOUNCEMENT',
+      entityId: announcementId,
+      action: 'ANNOUNCEMENT_CREATED',
+      actorId: user.userId,
+      before: null,
+      after: {
+        id: announcementId,
+        title: created.title,
+        category: created.category,
+        targetType: created.targetType,
+      },
+    })
+
+    // Sinkronisasi ke Google Calendar jika memiliki jadwal kegiatan
+    this.calendarService.syncAnnouncementEvent(announcementId).catch((err) => {
+      this.logger.error(`Failed to sync calendar for announcement ${announcementId}: ${err.message}`)
+    })
+
+    return this.findOne(announcementId, user)
+  }
+
+  // ─── 3. Ambil Daftar Pengumuman ────────────────────────────────────────────
+  async findAll(query: QueryAnnouncementsDto, user: RequestUser) {
+    const isPrivileged = Boolean(user.isSuperAdmin || user.isKormanit)
+
+    const userDivisions = await this.db
+      .select({ divisionId: divisionMembersTable.divisionId })
+      .from(divisionMembersTable)
+      .where(eq(divisionMembersTable.userId, user.userId))
+
+    const userDivisionIds = userDivisions.map((d) => d.divisionId)
+
+    const conditions = []
+
+    // Access control: anggota biasa hanya melihat 'ALL' atau divisinya
+    if (!isPrivileged) {
+      if (userDivisionIds.length > 0) {
+        conditions.push(
+          or(
+            eq(announcementsTable.targetType, 'ALL'),
+            inArray(announcementsTable.targetDivisionId, userDivisionIds),
+          ),
+        )
+      } else {
+        conditions.push(eq(announcementsTable.targetType, 'ALL'))
+      }
+    }
+
+    if (query.category) {
+      conditions.push(eq(announcementsTable.category, query.category))
+    }
+
+    if (query.targetType) {
+      conditions.push(eq(announcementsTable.targetType, query.targetType))
+    }
+
+    if (query.divisionId) {
+      conditions.push(eq(announcementsTable.targetDivisionId, query.divisionId))
+    }
+
+    if (query.search?.trim()) {
+      conditions.push(ilike(announcementsTable.title, `%${query.search.trim()}%`))
+    }
+
+    const rows = await this.db
+      .select({
+        announcement: announcementsTable,
+        author: {
+          id: usersTable.id,
+          name: usersTable.name,
+          email: usersTable.email,
+        },
+        targetDivision: {
+          id: divisionsTable.id,
+          name: divisionsTable.name,
+          slug: divisionsTable.slug,
+        },
+      })
+      .from(announcementsTable)
+      .innerJoin(usersTable, eq(announcementsTable.authorId, usersTable.id))
+      .leftJoin(divisionsTable, eq(announcementsTable.targetDivisionId, divisionsTable.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(announcementsTable.isPinned), desc(announcementsTable.createdAt))
+
+    return rows.map((r) => ({
+      ...r.announcement,
+      author: r.author,
+      targetDivision: r.targetDivision?.id ? r.targetDivision : null,
+    }))
+  }
+
+  // ─── 4. Ambil Detail Pengumuman ───────────────────────────────────────────
+  async findOne(id: string, user: RequestUser) {
+    const [row] = await this.db
+      .select({
+        announcement: announcementsTable,
+        author: {
+          id: usersTable.id,
+          name: usersTable.name,
+          email: usersTable.email,
+        },
+        targetDivision: {
+          id: divisionsTable.id,
+          name: divisionsTable.name,
+          slug: divisionsTable.slug,
+        },
+      })
+      .from(announcementsTable)
+      .innerJoin(usersTable, eq(announcementsTable.authorId, usersTable.id))
+      .leftJoin(divisionsTable, eq(announcementsTable.targetDivisionId, divisionsTable.id))
+      .where(eq(announcementsTable.id, id))
+      .limit(1)
+
+    if (!row) {
+      throw new NotFoundException('Pengumuman tidak ditemukan.')
+    }
+
+    const isPrivileged = Boolean(user.isSuperAdmin || user.isKormanit)
+    if (!isPrivileged && row.announcement.targetType === 'DIVISION') {
+      const isMember = await this.isMemberOfDivision(user.userId, row.announcement.targetDivisionId)
+      if (!isMember) {
+        throw new ForbiddenException('Anda tidak memiliki wewenang melihat pengumuman divisi ini.')
+      }
+    }
+
+    return {
+      ...row.announcement,
+      author: row.author,
+      targetDivision: row.targetDivision?.id ? row.targetDivision : null,
+    }
+  }
+
+  // ─── 5. Perbarui Pengumuman ────────────────────────────────────────────────
+  async update(id: string, dto: UpdateAnnouncementDto, user: RequestUser) {
+    const [existing] = await this.db
+      .select()
+      .from(announcementsTable)
+      .where(eq(announcementsTable.id, id))
+      .limit(1)
+
+    if (!existing) {
+      throw new NotFoundException('Pengumuman tidak ditemukan.')
+    }
+
+    const isAuthor = existing.authorId === user.userId
+    const isPrivileged = Boolean(user.isSuperAdmin || user.isKormanit)
+
+    if (!isAuthor && !isPrivileged) {
+      throw new ForbiddenException(
+        'Hanya pembuat pengumuman, Kormanit, atau Super Admin yang dapat mengubah pengumuman ini.',
+      )
+    }
+
+    const updates: Record<string, any> = {
+      updatedAt: new Date(),
+    }
+
+    if (dto.title !== undefined) updates.title = dto.title.trim()
+    if (dto.content !== undefined) updates.content = dto.content
+    if (dto.category !== undefined) updates.category = dto.category
+    if (dto.isPinned !== undefined) updates.isPinned = dto.isPinned
+    if (dto.location !== undefined) updates.location = dto.location || null
+
+    if (dto.targetType !== undefined) {
+      updates.targetType = dto.targetType
+      updates.targetDivisionId =
+        dto.targetType === 'DIVISION' ? dto.targetDivisionId || existing.targetDivisionId : null
+    } else if (dto.targetDivisionId !== undefined) {
+      updates.targetDivisionId = dto.targetDivisionId || null
+    }
+
+    if (dto.eventStartDate !== undefined) {
+      updates.eventStartDate = dto.eventStartDate ? new Date(dto.eventStartDate) : null
+    }
+    if (dto.eventEndDate !== undefined) {
+      updates.eventEndDate = dto.eventEndDate ? new Date(dto.eventEndDate) : null
+    }
+
+    const finalStart = updates.eventStartDate !== undefined ? updates.eventStartDate : existing.eventStartDate
+    const finalEnd = updates.eventEndDate !== undefined ? updates.eventEndDate : existing.eventEndDate
+
+    if (finalStart && finalEnd && finalEnd < finalStart) {
+      throw new BadRequestException('Waktu selesai agenda tidak boleh lebih awal dari waktu mulai.')
+    }
+
+    await this.db
+      .update(announcementsTable)
+      .set(updates)
+      .where(eq(announcementsTable.id, id))
+
+    await this.activityLogsService.record({
+      entityType: 'ANNOUNCEMENT',
+      entityId: id,
+      action: 'ANNOUNCEMENT_UPDATED',
+      actorId: user.userId,
+      before: { title: existing.title, isPinned: existing.isPinned },
+      after: { title: updates.title ?? existing.title, isPinned: updates.isPinned ?? existing.isPinned },
+    })
+
+    // Sinkronisasi ke Google Calendar
+    this.calendarService.syncAnnouncementEvent(id).catch((err) => {
+      this.logger.error(`Failed to sync calendar for updated announcement ${id}: ${err.message}`)
+    })
+
+    return this.findOne(id, user)
+  }
+
+  // ─── 6. Hapus Pengumuman ───────────────────────────────────────────────────
+  async delete(id: string, user: RequestUser) {
+    const [existing] = await this.db
+      .select()
+      .from(announcementsTable)
+      .where(eq(announcementsTable.id, id))
+      .limit(1)
+
+    if (!existing) {
+      throw new NotFoundException('Pengumuman tidak ditemukan.')
+    }
+
+    const isAuthor = existing.authorId === user.userId
+    const isPrivileged = Boolean(user.isSuperAdmin || user.isKormanit)
+
+    if (!isAuthor && !isPrivileged) {
+      throw new ForbiddenException(
+        'Hanya pembuat pengumuman, Kormanit, atau Super Admin yang dapat menghapus pengumuman ini.',
+      )
+    }
+
+    // Bersihkan dari Google Calendar
+    await this.calendarService.syncAnnouncementEvent(id, true).catch(() => {})
+
+    await this.db.delete(announcementsTable).where(eq(announcementsTable.id, id))
+
+    await this.activityLogsService.record({
+      entityType: 'ANNOUNCEMENT',
+      entityId: id,
+      action: 'ANNOUNCEMENT_DELETED',
+      actorId: user.userId,
+      before: { title: existing.title },
+      after: null,
+    })
+
+    return { success: true, message: 'Pengumuman berhasil dihapus.' }
+  }
+
+  // ─── Helper: Cek Keanggotaan Divisi ────────────────────────────────────────
+  private async isMemberOfDivision(userId: string, divisionId: string | null): Promise<boolean> {
+    if (!divisionId) return false
+    const [membership] = await this.db
+      .select()
+      .from(divisionMembersTable)
+      .where(
+        and(
+          eq(divisionMembersTable.userId, userId),
+          eq(divisionMembersTable.divisionId, divisionId),
+        ),
+      )
+      .limit(1)
+    return Boolean(membership)
+  }
+}
