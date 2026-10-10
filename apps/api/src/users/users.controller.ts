@@ -32,12 +32,12 @@ import { UsersService } from './users.service.js'
 
 @ApiTags('Users')
 @ApiBearerAuth()
-@UseGuards(SuperAdminGuard)
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Post()
+  @UseGuards(SuperAdminGuard)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary:
@@ -69,6 +69,7 @@ export class UsersController {
   }
 
   @Patch(':id/status')
+  @UseGuards(SuperAdminGuard)
   @ApiOperation({
     summary:
       'Ubah status aktif/nonaktif anggota (Super Admin & Koordinator Mahasiswa Unit)',
@@ -86,6 +87,7 @@ export class UsersController {
   }
 
   @Post(':id/divisions')
+  @UseGuards(SuperAdminGuard)
   @ApiOperation({
     summary:
       'Tambahkan anggota ke divisi lain (Multi-divisi) (Super Admin & Koordinator Mahasiswa Unit)',
@@ -103,6 +105,7 @@ export class UsersController {
   }
 
   @Patch(':id/divisions/:divisionId/role')
+  @UseGuards(SuperAdminGuard)
   @ApiOperation({
     summary:
       'Ubah role anggota di divisi tertentu (Super Admin & Koordinator Mahasiswa Unit)',
@@ -121,6 +124,7 @@ export class UsersController {
   }
 
   @Delete(':id/divisions/:divisionId')
+  @UseGuards(SuperAdminGuard)
   @ApiOperation({
     summary:
       'Hapus keanggotaan divisi seorang anggota (Super Admin & Koordinator Mahasiswa Unit)',
@@ -138,6 +142,7 @@ export class UsersController {
   }
 
   @Post(':id/divisions/move')
+  @UseGuards(SuperAdminGuard)
   @ApiOperation({
     summary:
       'Pindahkan anggota dari satu divisi ke divisi lain (Super Admin & Koordinator Mahasiswa Unit)',
@@ -155,6 +160,7 @@ export class UsersController {
   }
 
   @Patch(':id/global-role')
+  @UseGuards(SuperAdminGuard)
   @ApiOperation({
     summary:
       'Ubah hak akses Koordinator Mahasiswa Unit (Super Admin & Koordinator Mahasiswa Unit)',
@@ -172,6 +178,7 @@ export class UsersController {
   }
 
   @Post(':id/resend-activation')
+  @UseGuards(SuperAdminGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
@@ -186,6 +193,7 @@ export class UsersController {
   }
 
   @Patch(':id/academic')
+  @UseGuards(SuperAdminGuard)
   @ApiOperation({
     summary:
       'Perbarui klaster, peran Kormater, atau subunit posko mahasiswa (Super Admin & Koordinator Mahasiswa Unit)',
