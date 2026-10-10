@@ -1,5 +1,5 @@
 import { pgEnum, pgTable, text, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core'
-import { usersTable } from './users.schema.js'
+import { usersTable } from './users.schema'
 
 export const subunitRoleEnum = pgEnum('subunit_role', ['MEMBER', 'COORDINATOR'])
 
