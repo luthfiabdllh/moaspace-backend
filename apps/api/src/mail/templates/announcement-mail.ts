@@ -1,4 +1,4 @@
-import { escapeHtml, renderBaseLayout } from './base-layout.js'
+import { escapeHtml, renderBaseLayout, formatDateTimeWib } from './base-layout.js'
 
 export interface AnnouncementMailData {
   title: string
@@ -27,10 +27,7 @@ export function renderAnnouncementMail(data: AnnouncementMailData): { html: stri
 
   let eventInfoHtml = ''
   if (data.eventStartDate) {
-    const formattedDate = new Date(data.eventStartDate).toLocaleString('id-ID', {
-      dateStyle: 'full',
-      timeStyle: 'short',
-    })
+    const formattedDate = formatDateTimeWib(data.eventStartDate)
     eventInfoHtml = `
       <div style="background-color: #f1f5f9; border-radius: 8px; padding: 12px 16px; margin: 16px 0; font-size: 14px;">
         <div style="color: #475569; font-size: 12px; font-weight: 600; text-transform: uppercase; margin-bottom: 4px;">📅 Jadwal Agenda</div>
@@ -93,7 +90,7 @@ ${data.title}
 Diumumkan oleh: ${data.authorName} (${targetLabel})
 
 ${
-    data.eventStartDate ? `Jadwal: ${new Date(data.eventStartDate).toLocaleString('id-ID')}\nLokasi: ${data.location ?? '-'}\n\n` : ''
+    data.eventStartDate ? `Jadwal: ${formatDateTimeWib(data.eventStartDate)}\nLokasi: ${data.location ?? '-'}\n\n` : ''
   }${data.summaryText ? `Isi Pengumuman:\n${data.summaryText}\n\n` : ''}Buka pengumuman lengkap: ${data.announcementUrl}`
 
   return { html, text }

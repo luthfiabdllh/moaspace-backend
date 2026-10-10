@@ -1,4 +1,4 @@
-import { escapeHtml, renderBaseLayout } from './base-layout.js'
+import { escapeHtml, renderBaseLayout, formatDateWib } from './base-layout.js'
 
 export interface TaskDeadlineMailData {
   recipientName: string
@@ -21,9 +21,7 @@ export function renderTaskDeadlineMail(data: TaskDeadlineMailData): { html: stri
     ? { bg: '#fee2e2', text: '#b91c1c', label: '🚨 DEADLINE HARI INI' }
     : { bg: '#fef3c7', text: '#b45309', label: '⚠️ DEADLINE BESOK (H-1)' }
 
-  const formattedDate = new Date(data.dueDate).toLocaleDateString('id-ID', {
-    dateStyle: 'full',
-  })
+  const formattedDate = formatDateWib(data.dueDate)
 
   const defaultPriority = { label: 'Sedang', color: '#d97706' }
   const priority = (data.priority ? PRIORITY_LABELS[data.priority] : null) ?? defaultPriority

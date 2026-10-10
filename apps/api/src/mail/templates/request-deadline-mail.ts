@@ -1,4 +1,4 @@
-import { escapeHtml, renderBaseLayout } from './base-layout.js'
+import { escapeHtml, renderBaseLayout, formatDateWib } from './base-layout.js'
 
 export interface RequestDeadlineMailData {
   recipientName: string
@@ -14,9 +14,7 @@ export function renderRequestDeadlineMail(data: RequestDeadlineMailData): { html
     ? { bg: '#fee2e2', text: '#b91c1c', label: '🚨 TARGET SELESAI HARI INI' }
     : { bg: '#fef3c7', text: '#b45309', label: '⚠️ TARGET SELESAI BESOK (H-1)' }
 
-  const formattedDate = new Date(data.deadline).toLocaleDateString('id-ID', {
-    dateStyle: 'full',
-  })
+  const formattedDate = formatDateWib(data.deadline)
 
   const contentHtml = `
     <p style="font-size: 15px; color: #334155; margin-top: 0;">Halo <strong>${escapeHtml(data.recipientName)}</strong>,</p>

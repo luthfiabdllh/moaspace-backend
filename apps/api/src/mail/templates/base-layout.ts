@@ -148,3 +148,21 @@ export function escapeHtml(str: string): string {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;')
 }
+
+export function formatDateTimeWib(date: Date | string): string {
+  const d = typeof date === 'string' ? new Date(date) : date
+  return `${d.toLocaleString('id-ID', {
+    timeZone: 'Asia/Jakarta',
+    dateStyle: 'full',
+    timeStyle: 'short',
+  })} WIB`
+}
+
+export function formatDateWib(date: Date | string): string {
+  const d = typeof date === 'string' ? new Date(date) : date
+  return d.toLocaleDateString('id-ID', {
+    timeZone: 'Asia/Jakarta',
+    dateStyle: 'full',
+  })
+}
+

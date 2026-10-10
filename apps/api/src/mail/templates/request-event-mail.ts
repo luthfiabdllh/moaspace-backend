@@ -1,4 +1,4 @@
-import { escapeHtml, renderBaseLayout } from './base-layout.js'
+import { escapeHtml, renderBaseLayout, formatDateWib } from './base-layout.js'
 
 export type RequestEventType =
   | 'NEW_REQUEST'
@@ -113,9 +113,7 @@ export function renderRequestEventMail(data: RequestEventMailData): { html: stri
   let deadlineHtml = ''
   let deadlineText = ''
   if (data.deadline) {
-    const formattedDate = new Date(data.deadline).toLocaleDateString('id-ID', {
-      dateStyle: 'full',
-    })
+    const formattedDate = formatDateWib(data.deadline)
     deadlineHtml = `
       <tr>
         <td style="color: #64748b; padding: 4px 0; width: 140px;">Batas Waktu:</td>

@@ -1,4 +1,4 @@
-import { escapeHtml, renderBaseLayout } from './base-layout.js'
+import { escapeHtml, renderBaseLayout, formatDateWib } from './base-layout.js'
 
 export interface TaskAssignedMailData {
   recipientName: string
@@ -14,9 +14,7 @@ export function renderTaskAssignedMail(data: TaskAssignedMailData): { html: stri
   let dueDateHtml = ''
   let dueDateText = ''
   if (data.dueDate) {
-    const formattedDate = new Date(data.dueDate).toLocaleDateString('id-ID', {
-      dateStyle: 'full',
-    })
+    const formattedDate = formatDateWib(data.dueDate)
     dueDateHtml = `
       <tr>
         <td style="color: #64748b; padding: 4px 0; width: 120px;">Batas Waktu:</td>
