@@ -358,9 +358,49 @@ export class AnnouncementsService {
     return Boolean(membership)
   }
 
-  private extractPlainText(content: Record<string, unknown>): string {
-    if (!content || typeof content !== 'object') return ''
+  private extractContentDetails(content: Record<string, unknown>): {
+    bodyHtml?: string
+    summaryText: string
+  } {
+    if (!content || typeof content !== 'object') {
+      return { summaryText: '' }
+    }
+
     try {
+      // 1. Format dari editor rich-text TipTap pada frontend: { html: "<p>...</p>" }
+      const contentAny = content as any
+      if (typeof contentAny.html === 'string' && contentAny.html.trim().length > 0) {
+        const rawHtml = contentAny.html as string
+
+        // Format email-friendly HTML dengan inline-style dasar
+        const styledHtml = rawHtml
+          .replace(/<p\b([^>]*)>/gi, '<p style="margin: 0 0 12px 0; line-height: 1.6; color: #334155;"$1>')
+          .replace(/<ul\b([^>]*)>/gi, '<ul style="margin: 0 0 12px 0; padding-left: 20px; color: #334155; line-height: 1.6;"$1>')
+          .replace(/<ol\b([^>]*)>/gi, '<ol style="margin: 0 0 12px 0; padding-left: 20px; color: #334155; line-height: 1.6;"$1>')
+          .replace(/<li\b([^>]*)>/gi, '<li style="margin-bottom: 4px;"$1>')
+          .replace(/<blockquote\b([^>]*)>/gi, '<blockquote style="margin: 12px 0; padding: 8px 16px; border-left: 3px solid #6366f1; background: #ffffff; color: #475569;"$1>')
+          .replace(/<img\b([^>]*)>/gi, '<img style="max-width: 100%; height: auto; border-radius: 6px; margin: 12px 0; display: block;"$1>')
+
+        const plainText = rawHtml
+          .replace(/<br\s*\/?>/gi, '\n')
+          .replace(/<\/p>/gi, '\n\n')
+          .replace(/<li>/gi, '• ')
+          .replace(/<\/li>/gi, '\n')
+          .replace(/<[^>]+>/g, '')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim()
+
+        return {
+          bodyHtml: styledHtml,
+          summaryText: plainText,
+        }
+      }
+
+      // 2. Fallback format node-tree ProseMirror/TipTap: { type: 'doc', content: [...] }
       const texts: string[] = []
       const traverse = (node: any) => {
         if (!node) return
@@ -370,9 +410,13 @@ export class AnnouncementsService {
         }
       }
       traverse(content)
-      return texts.join(' ').slice(0, 300)
+      const plainText = texts.join(' ').trim()
+
+      return {
+        summaryText: plainText,
+      }
     } catch {
-      return ''
+      return { summaryText: '' }
     }
   }
 
@@ -427,6 +471,8 @@ export class AnnouncementsService {
         .from(usersTable)
         .where(eq(usersTable.id, authorUser.userId))
 
+      const { bodyHtml, summaryText } = this.extractContentDetails(announcement.content as any)
+
       await this.mailService.sendAnnouncement(targetRecipients, {
         id: announcement.id,
         title: announcement.title,
@@ -436,7 +482,8 @@ export class AnnouncementsService {
         divisionName,
         eventStartDate: announcement.eventStartDate,
         location: announcement.location,
-        summaryText: this.extractPlainText(announcement.content as any),
+        summaryText,
+        bodyHtml,
       })
     } catch (err: any) {
       this.logger.error(`Failed to send announcement email: ${err.message}`)

@@ -9,6 +9,7 @@ export interface AnnouncementMailData {
   eventStartDate?: Date | string | null
   location?: string | null
   summaryText?: string
+  bodyHtml?: string
   announcementUrl: string
 }
 
@@ -55,12 +56,27 @@ export function renderAnnouncementMail(data: AnnouncementMailData): { html: stri
       Diumumkan oleh: <strong>${escapeHtml(data.authorName)}</strong>
     </p>
 
-    ${data.summaryText ? `<div style="color: #334155; font-size: 15px; margin: 16px 0; line-height: 1.6;">${escapeHtml(data.summaryText)}</div>` : ''}
-
     ${eventInfoHtml}
 
+    ${
+      data.bodyHtml
+        ? `
+      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin: 20px 0;">
+        <div style="color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">
+          Isi Pengumuman
+        </div>
+        <div style="color: #1e293b; font-size: 15px; line-height: 1.6;">
+          ${data.bodyHtml}
+        </div>
+      </div>
+      `
+        : data.summaryText
+          ? `<div style="color: #334155; font-size: 15px; margin: 16px 0; line-height: 1.6;">${escapeHtml(data.summaryText)}</div>`
+          : ''
+    }
+
     <p style="color: #475569; font-size: 14px; margin-top: 20px;">
-      Buka MoaSpace untuk membaca isi pengumuman secara lengkap dan berinteraksi dengan tim.
+      Buka MoaSpace untuk membaca pengumuman selengkapnya dan berinteraksi dengan tim.
     </p>
   `
 
@@ -76,9 +92,9 @@ export function renderAnnouncementMail(data: AnnouncementMailData): { html: stri
 ${data.title}
 Diumumkan oleh: ${data.authorName} (${targetLabel})
 
-${data.summaryText ? `${data.summaryText}\n\n` : ''}${
+${
     data.eventStartDate ? `Jadwal: ${new Date(data.eventStartDate).toLocaleString('id-ID')}\nLokasi: ${data.location ?? '-'}\n\n` : ''
-  }Buka pengumuman lengkap: ${data.announcementUrl}`
+  }${data.summaryText ? `Isi Pengumuman:\n${data.summaryText}\n\n` : ''}Buka pengumuman lengkap: ${data.announcementUrl}`
 
   return { html, text }
 }
